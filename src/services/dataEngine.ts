@@ -3,6 +3,10 @@ import {
   deleteDoc,
   doc,
   getDoc,
+  getDocFromServer,
+  getDocs,
+  getDocsFromServer,
+  limit,
   onSnapshot,
   query,
   serverTimestamp,
@@ -10,6 +14,8 @@ import {
   Timestamp,
   updateDoc,
   where,
+  type DocumentData,
+  type QueryDocumentSnapshot,
   type Unsubscribe,
 } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
@@ -150,6 +156,107 @@ function timestampToIso(val: unknown): string {
   return new Date().toISOString();
 }
 
+function mapInstructorDoc(d: QueryDocumentSnapshot<DocumentData>): Instructor {
+  const data = d.data();
+  return {
+    id: String(data.id || d.id),
+    name: String(data.name || ''),
+    username: String(data.username || ''),
+    passwordHash: String(data.passwordHash || ''),
+    specialty: String(data.specialty || ''),
+    ownerUid: String(data.ownerUid || ''),
+    createdAt: timestampToIso(data.createdAt),
+  };
+}
+
+function mapAccessCodeDoc(d: QueryDocumentSnapshot<DocumentData>): AccessCode {
+  const data = d.data();
+  const codeStr = String(data.code || d.id);
+  return {
+    id: String(data.id || d.id),
+    code: codeStr,
+    className: String(data.className || ''),
+    createdByRole: data.createdByRole === 'instructor' ? 'instructor' : 'admin',
+    createdById: String(data.createdById || ''),
+    createdByName: String(data.createdByName || ''),
+    ownerUid: String(data.ownerUid || ''),
+    isActive: Boolean(data.isActive),
+    isTrial:
+      typeof data.isTrial === 'boolean'
+        ? data.isTrial
+        : codeStr.toUpperCase().startsWith('BELAJAR'),
+    createdAt: timestampToIso(data.createdAt),
+  };
+}
+
+function mapStudentDoc(d: QueryDocumentSnapshot<DocumentData>): Student {
+  const data = d.data();
+  return {
+    id: String(data.id || d.id),
+    name: String(data.name || ''),
+    username: String(data.username || ''),
+    passwordHash: String(data.passwordHash || ''),
+    accessCode: String(data.accessCode || ''),
+    className: String(data.className || ''),
+    instructorId: String(data.instructorId || ''),
+    instructorName: String(data.instructorName || ''),
+    instructorUid: String(data.instructorUid || ''),
+    ownerUid: String(data.ownerUid || ''),
+    createdAt: timestampToIso(data.createdAt),
+  };
+}
+
+function mapProgressDoc(d: QueryDocumentSnapshot<DocumentData>): ProgressRecord {
+  const data = d.data();
+  const rawStars = Number(data.stars) || 1;
+  const stars = Math.min(3, Math.max(1, rawStars)) as 1 | 2 | 3;
+  return {
+    id: String(data.id || d.id),
+    studentId: String(data.studentId || ''),
+    levelId: String(data.levelId || ''),
+    tier: (data.tier as TierId) || 'pemula',
+    stars,
+    codeSubmitted: String(data.codeSubmitted || ''),
+    language: data.language === 'javascript' ? 'javascript' : 'python',
+    ownerUid: String(data.ownerUid || ''),
+    instructorUid: String(data.instructorUid || ''),
+    completedAt: timestampToIso(data.completedAt),
+  };
+}
+
+function mapCertDoc(d: QueryDocumentSnapshot<DocumentData>): CertificateRecord {
+  const data = d.data();
+  return {
+    id: String(data.id || d.id),
+    certificateNo: String(data.certificateNo || ''),
+    studentId: String(data.studentId || ''),
+    studentName: String(data.studentName || ''),
+    tierId: (data.tierId as TierId) || 'pemula',
+    tierName: String(data.tierName || ''),
+    instructorName: String(data.instructorName || ''),
+    instructorUid: String(data.instructorUid || ''),
+    ownerUid: String(data.ownerUid || ''),
+    issuedAt: timestampToIso(data.issuedAt),
+  };
+}
+
+function mergeById<T extends { id: string }>(a: T[], b: T[]): T[] {
+  const map = new Map<string, T>();
+  for (const item of a) map.set(item.id, item);
+  for (const item of b) map.set(item.id, item);
+  return Array.from(map.values());
+}
+
+function isPermissionDeniedError(err: unknown): boolean {
+  const code = (err as { code?: string })?.code || '';
+  const msg = err instanceof Error ? err.message : String(err);
+  return (
+    code === 'permission-denied' ||
+    msg.toLowerCase().includes('permission-denied') ||
+    msg.toLowerCase().includes('missing or insufficient permissions')
+  );
+}
+
 type Listener = (snapshot: DataStoreSnapshot) => void;
 
 class CodeSparkDataEngine {
@@ -158,6 +265,7 @@ class CodeSparkDataEngine {
   private broadcastChannel: BroadcastChannel | null = null;
   private snapshot: DataStoreSnapshot;
   private initialized = false;
+  private connectionAttemptId = 0;
 
   constructor() {
     const local = readLocalDb();
@@ -170,7 +278,10 @@ class CodeSparkDataEngine {
       settings: local.settings,
       mode: 'local',
       firebaseConnected: false,
+      firebaseStatus: isFirebaseConfigured() ? 'connecting' : 'offline',
+      firebaseError: null,
       firebaseUserEmail: null,
+      lastSyncedAt: null,
       loading: false,
     };
   }
@@ -198,36 +309,127 @@ class CodeSparkDataEngine {
 
     if (isFirebaseConfigured() && auth && db) {
       onAuthStateChanged(auth, (user) => {
-        this.cleanupFirestoreListeners();
-
         if (user && user.emailVerified) {
-          this.snapshot = {
-            ...this.snapshot,
-            mode: 'firebase',
-            firebaseConnected: true,
-            firebaseUserEmail: user.email,
-            loading: true,
-          };
-          this.emit();
-          this.attachFirestoreListeners(user.uid, user.email || '');
+          void this.connectFirebaseRealtime({
+            uid: user.uid,
+            email: user.email || '',
+            directMode: false,
+          });
         } else {
-          const local = readLocalDb();
-          this.snapshot = {
-            instructors: local.instructors,
-            accessCodes: local.accessCodes,
-            students: local.students,
-            progress: local.progress,
-            certificates: local.certificates,
-            settings: local.settings,
-            mode: 'local',
-            firebaseConnected: false,
-            firebaseUserEmail: null,
-            loading: false,
-          };
-          this.emit();
+          // Automatically connect in direct realtime mode if Firestore rules allow it
+          void this.connectFirebaseRealtime({
+            uid: 'direct_client',
+            email: null,
+            directMode: true,
+          });
         }
       });
     }
+  }
+
+  public async retryFirebaseConnection(): Promise<void> {
+    if (!isFirebaseConfigured() || !db) return;
+    const currentUser = auth?.currentUser;
+    if (currentUser && currentUser.emailVerified) {
+      await this.connectFirebaseRealtime({
+        uid: currentUser.uid,
+        email: currentUser.email || '',
+        directMode: false,
+      });
+    } else {
+      await this.connectFirebaseRealtime({
+        uid: 'direct_client',
+        email: null,
+        directMode: true,
+      });
+    }
+  }
+
+  private fallbackToLocal(
+    status: 'auth_required' | 'offline',
+    errorMessage: string | null,
+    userEmail: string | null = null
+  ) {
+    this.cleanupFirestoreListeners();
+    const local = readLocalDb();
+    this.snapshot = {
+      instructors: local.instructors,
+      accessCodes: local.accessCodes,
+      students: local.students,
+      progress: local.progress,
+      certificates: local.certificates,
+      settings: local.settings,
+      mode: 'local',
+      firebaseConnected: false,
+      firebaseStatus: status,
+      firebaseError: errorMessage,
+      firebaseUserEmail: userEmail,
+      lastSyncedAt: null,
+      loading: false,
+    };
+    this.emit();
+  }
+
+  private async connectFirebaseRealtime(opts: {
+    uid: string;
+    email: string | null;
+    directMode: boolean;
+  }) {
+    if (!db) return;
+    const attemptId = ++this.connectionAttemptId;
+    this.cleanupFirestoreListeners();
+
+    this.snapshot = {
+      ...this.snapshot,
+      firebaseStatus: 'connecting',
+      firebaseError: null,
+      firebaseUserEmail: opts.email,
+      loading: true,
+    };
+    this.emit();
+
+    // Probe Firestore server reachability & permission before switching mode
+    try {
+      await getDocFromServer(doc(db, 'settings', 'app_config'));
+      if (opts.directMode) {
+        // Verify collection list access works in direct mode
+        await getDocsFromServer(query(collection(db, 'access_codes'), limit(1)));
+      }
+    } catch (error) {
+      if (attemptId !== this.connectionAttemptId) return;
+      if (isPermissionDeniedError(error)) {
+        this.fallbackToLocal(
+          'auth_required',
+          opts.directMode
+            ? 'Aturan keamanan Firestore (firestore.rules) aktif. Klik "Hubungkan Firebase (Google)" untuk menyalakan sinkronisasi cloud realtime.'
+            : 'Akun Google Anda belum mendapat izin baca/tulis pada Firestore rules proyek ini.',
+          opts.email
+        );
+        return;
+      }
+      this.fallbackToLocal(
+        'offline',
+        'Cloud Firestore (default) pada proyek codespark-a5c49 belum dapat dijangkau. Pastikan Cloud Firestore sudah dibuat di Firebase Console.',
+        opts.email
+      );
+      return;
+    }
+
+    if (attemptId !== this.connectionAttemptId) return;
+
+    this.snapshot = {
+      ...this.snapshot,
+      mode: 'firebase',
+      firebaseConnected: true,
+      firebaseStatus: 'connected',
+      firebaseError: null,
+      firebaseUserEmail: opts.email,
+      lastSyncedAt: new Date().toISOString(),
+      loading: true,
+    };
+    this.emit();
+
+    this.attachFirestoreListeners(opts.uid, opts.email || '', opts.directMode, attemptId);
   }
 
   private cleanupFirestoreListeners() {
@@ -257,7 +459,7 @@ class CodeSparkDataEngine {
         });
       }
     } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, `access_codes/${DEFAULT_ACCESS_CODE}`);
+      console.warn('Default access code seed skipped:', error);
     }
 
     const settingsRef = doc(db, 'settings', 'app_config');
@@ -272,23 +474,44 @@ class CodeSparkDataEngine {
         });
       }
     } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, 'settings/app_config');
+      console.warn('Default settings seed skipped:', error);
     }
   }
 
-  private attachFirestoreListeners(uid: string, email: string) {
+  private attachFirestoreListeners(
+    uid: string,
+    email: string,
+    directMode: boolean,
+    attemptId: number
+  ) {
     if (!db) return;
-    const isAdminUser = email.toLowerCase() === BOOTSTRAPPED_ADMIN_EMAIL.toLowerCase();
+    const isAdminUser =
+      directMode || email.toLowerCase() === BOOTSTRAPPED_ADMIN_EMAIL.toLowerCase();
 
     if (isAdminUser) {
       void this.ensureDefaultCloudRecords(uid);
     }
 
-    // Listen to global app settings (admin phone / upgrade message)
+    const onListenerError = (path: string) => (error: Error) => {
+      if (attemptId !== this.connectionAttemptId) return;
+      console.warn(`Firestore listener notice (${path}):`, error.message);
+      if (isPermissionDeniedError(error)) {
+        this.fallbackToLocal(
+          'auth_required',
+          'Akses Firestore membutuhkan Login Google sesuai firestore.rules.',
+          email || null
+        );
+      }
+    };
+
+    const touchSync = () => new Date().toISOString();
+
+    // 1. Global App Settings (Admin Phone / WhatsApp / Upgrade Message)
     this.firestoreUnsubs.push(
       onSnapshot(
         doc(db, 'settings', 'app_config'),
         (snap) => {
+          if (attemptId !== this.connectionAttemptId) return;
           if (snap.exists()) {
             const data = snap.data();
             this.snapshot = {
@@ -303,184 +526,230 @@ class CodeSparkDataEngine {
                 ),
                 updatedAt: timestampToIso(data.updatedAt),
               },
+              lastSyncedAt: touchSync(),
             };
             this.emit();
           }
         },
         (error) => {
-          console.warn('Settings listener fallback:', error.message);
+          console.warn('Settings listener notice:', error.message);
         }
       )
     );
 
+    // 2. Instructors
     const qInstructors = isAdminUser
       ? collection(db, 'instructors')
       : query(collection(db, 'instructors'), where('ownerUid', '==', uid));
-
-    const qCodes = isAdminUser
-      ? collection(db, 'access_codes')
-      : query(collection(db, 'access_codes'), where('ownerUid', '==', uid));
-
-    const qStudents = isAdminUser
-      ? collection(db, 'students')
-      : query(collection(db, 'students'), where('ownerUid', '==', uid));
-
-    const qProgress = isAdminUser
-      ? collection(db, 'progress')
-      : query(collection(db, 'progress'), where('ownerUid', '==', uid));
-
-    const qCerts = isAdminUser
-      ? collection(db, 'certificates')
-      : query(collection(db, 'certificates'), where('ownerUid', '==', uid));
 
     this.firestoreUnsubs.push(
       onSnapshot(
         qInstructors,
         (snap) => {
+          if (attemptId !== this.connectionAttemptId) return;
           this.snapshot = {
             ...this.snapshot,
-            instructors: snap.docs.map((d) => {
-              const data = d.data();
-              return {
-                id: String(data.id || d.id),
-                name: String(data.name || ''),
-                username: String(data.username || ''),
-                passwordHash: String(data.passwordHash || ''),
-                specialty: String(data.specialty || ''),
-                ownerUid: String(data.ownerUid || ''),
-                createdAt: timestampToIso(data.createdAt),
-              };
-            }),
+            instructors: snap.docs.map(mapInstructorDoc),
+            lastSyncedAt: touchSync(),
             loading: false,
           };
           this.emit();
         },
-        (error) => handleFirestoreError(error, OperationType.LIST, 'instructors')
+        onListenerError('instructors')
       )
     );
+
+    // 3. Access Codes
+    const qCodes = isAdminUser
+      ? collection(db, 'access_codes')
+      : query(collection(db, 'access_codes'), where('ownerUid', '==', uid));
 
     this.firestoreUnsubs.push(
       onSnapshot(
         qCodes,
         (snap) => {
+          if (attemptId !== this.connectionAttemptId) return;
           this.snapshot = {
             ...this.snapshot,
-            accessCodes: snap.docs.map((d) => {
-              const data = d.data();
-              const codeStr = String(data.code || d.id);
-              return {
-                id: String(data.id || d.id),
-                code: codeStr,
-                className: String(data.className || ''),
-                createdByRole: data.createdByRole === 'instructor' ? 'instructor' : 'admin',
-                createdById: String(data.createdById || ''),
-                createdByName: String(data.createdByName || ''),
-                ownerUid: String(data.ownerUid || ''),
-                isActive: Boolean(data.isActive),
-                isTrial:
-                  typeof data.isTrial === 'boolean'
-                    ? data.isTrial
-                    : codeStr.toUpperCase().startsWith('BELAJAR'),
-                createdAt: timestampToIso(data.createdAt),
-              };
-            }),
+            accessCodes: snap.docs.map(mapAccessCodeDoc),
+            lastSyncedAt: touchSync(),
             loading: false,
           };
           this.emit();
         },
-        (error) => handleFirestoreError(error, OperationType.LIST, 'access_codes')
+        onListenerError('access_codes')
       )
     );
 
-    this.firestoreUnsubs.push(
-      onSnapshot(
-        qStudents,
-        (snap) => {
-          this.snapshot = {
-            ...this.snapshot,
-            students: snap.docs.map((d) => {
-              const data = d.data();
-              return {
-                id: String(data.id || d.id),
-                name: String(data.name || ''),
-                username: String(data.username || ''),
-                passwordHash: String(data.passwordHash || ''),
-                accessCode: String(data.accessCode || ''),
-                className: String(data.className || ''),
-                instructorId: String(data.instructorId || ''),
-                instructorName: String(data.instructorName || ''),
-                instructorUid: String(data.instructorUid || ''),
-                ownerUid: String(data.ownerUid || ''),
-                createdAt: timestampToIso(data.createdAt),
-              };
-            }),
-            loading: false,
-          };
-          this.emit();
-        },
-        (error) => handleFirestoreError(error, OperationType.LIST, 'students')
-      )
-    );
+    // 4, 5, 6. Students, Progress, Certificates
+    if (isAdminUser) {
+      this.firestoreUnsubs.push(
+        onSnapshot(
+          collection(db, 'students'),
+          (snap) => {
+            if (attemptId !== this.connectionAttemptId) return;
+            this.snapshot = {
+              ...this.snapshot,
+              students: snap.docs.map(mapStudentDoc),
+              lastSyncedAt: touchSync(),
+              loading: false,
+            };
+            this.emit();
+          },
+          onListenerError('students')
+        )
+      );
 
-    this.firestoreUnsubs.push(
-      onSnapshot(
-        qProgress,
-        (snap) => {
-          this.snapshot = {
-            ...this.snapshot,
-            progress: snap.docs.map((d) => {
-              const data = d.data();
-              const rawStars = Number(data.stars) || 1;
-              const stars = Math.min(3, Math.max(1, rawStars)) as 1 | 2 | 3;
-              return {
-                id: String(data.id || d.id),
-                studentId: String(data.studentId || ''),
-                levelId: String(data.levelId || ''),
-                tier: (data.tier as TierId) || 'pemula',
-                stars,
-                codeSubmitted: String(data.codeSubmitted || ''),
-                language: data.language === 'javascript' ? 'javascript' : 'python',
-                ownerUid: String(data.ownerUid || ''),
-                instructorUid: String(data.instructorUid || ''),
-                completedAt: timestampToIso(data.completedAt),
-              };
-            }),
-            loading: false,
-          };
-          this.emit();
-        },
-        (error) => handleFirestoreError(error, OperationType.LIST, 'progress')
-      )
-    );
+      this.firestoreUnsubs.push(
+        onSnapshot(
+          collection(db, 'progress'),
+          (snap) => {
+            if (attemptId !== this.connectionAttemptId) return;
+            this.snapshot = {
+              ...this.snapshot,
+              progress: snap.docs.map(mapProgressDoc),
+              lastSyncedAt: touchSync(),
+              loading: false,
+            };
+            this.emit();
+          },
+          onListenerError('progress')
+        )
+      );
 
-    this.firestoreUnsubs.push(
-      onSnapshot(
-        qCerts,
-        (snap) => {
-          this.snapshot = {
-            ...this.snapshot,
-            certificates: snap.docs.map((d) => {
-              const data = d.data();
-              return {
-                id: String(data.id || d.id),
-                certificateNo: String(data.certificateNo || ''),
-                studentId: String(data.studentId || ''),
-                studentName: String(data.studentName || ''),
-                tierId: (data.tierId as TierId) || 'pemula',
-                tierName: String(data.tierName || ''),
-                instructorName: String(data.instructorName || ''),
-                instructorUid: String(data.instructorUid || ''),
-                ownerUid: String(data.ownerUid || ''),
-                issuedAt: timestampToIso(data.issuedAt),
-              };
-            }),
-            loading: false,
-          };
-          this.emit();
-        },
-        (error) => handleFirestoreError(error, OperationType.LIST, 'certificates')
-      )
-    );
+      this.firestoreUnsubs.push(
+        onSnapshot(
+          collection(db, 'certificates'),
+          (snap) => {
+            if (attemptId !== this.connectionAttemptId) return;
+            this.snapshot = {
+              ...this.snapshot,
+              certificates: snap.docs.map(mapCertDoc),
+              lastSyncedAt: touchSync(),
+              loading: false,
+            };
+            this.emit();
+          },
+          onListenerError('certificates')
+        )
+      );
+    } else {
+      // Non-admin Google user (Student or Instructor): merge ownerUid + instructorUid queries
+      let ownStudents: Student[] = [];
+      let mentoredStudents: Student[] = [];
+      let ownProgress: ProgressRecord[] = [];
+      let mentoredProgress: ProgressRecord[] = [];
+      let ownCerts: CertificateRecord[] = [];
+      let mentoredCerts: CertificateRecord[] = [];
+
+      this.firestoreUnsubs.push(
+        onSnapshot(
+          query(collection(db, 'students'), where('ownerUid', '==', uid)),
+          (snap) => {
+            if (attemptId !== this.connectionAttemptId) return;
+            ownStudents = snap.docs.map(mapStudentDoc);
+            this.snapshot = {
+              ...this.snapshot,
+              students: mergeById(ownStudents, mentoredStudents),
+              lastSyncedAt: touchSync(),
+              loading: false,
+            };
+            this.emit();
+          },
+          onListenerError('students:owner')
+        )
+      );
+
+      this.firestoreUnsubs.push(
+        onSnapshot(
+          query(collection(db, 'students'), where('instructorUid', '==', uid)),
+          (snap) => {
+            if (attemptId !== this.connectionAttemptId) return;
+            mentoredStudents = snap.docs.map(mapStudentDoc);
+            this.snapshot = {
+              ...this.snapshot,
+              students: mergeById(ownStudents, mentoredStudents),
+              lastSyncedAt: touchSync(),
+              loading: false,
+            };
+            this.emit();
+          },
+          onListenerError('students:instructor')
+        )
+      );
+
+      this.firestoreUnsubs.push(
+        onSnapshot(
+          query(collection(db, 'progress'), where('ownerUid', '==', uid)),
+          (snap) => {
+            if (attemptId !== this.connectionAttemptId) return;
+            ownProgress = snap.docs.map(mapProgressDoc);
+            this.snapshot = {
+              ...this.snapshot,
+              progress: mergeById(ownProgress, mentoredProgress),
+              lastSyncedAt: touchSync(),
+              loading: false,
+            };
+            this.emit();
+          },
+          onListenerError('progress:owner')
+        )
+      );
+
+      this.firestoreUnsubs.push(
+        onSnapshot(
+          query(collection(db, 'progress'), where('instructorUid', '==', uid)),
+          (snap) => {
+            if (attemptId !== this.connectionAttemptId) return;
+            mentoredProgress = snap.docs.map(mapProgressDoc);
+            this.snapshot = {
+              ...this.snapshot,
+              progress: mergeById(ownProgress, mentoredProgress),
+              lastSyncedAt: touchSync(),
+              loading: false,
+            };
+            this.emit();
+          },
+          onListenerError('progress:instructor')
+        )
+      );
+
+      this.firestoreUnsubs.push(
+        onSnapshot(
+          query(collection(db, 'certificates'), where('ownerUid', '==', uid)),
+          (snap) => {
+            if (attemptId !== this.connectionAttemptId) return;
+            ownCerts = snap.docs.map(mapCertDoc);
+            this.snapshot = {
+              ...this.snapshot,
+              certificates: mergeById(ownCerts, mentoredCerts),
+              lastSyncedAt: touchSync(),
+              loading: false,
+            };
+            this.emit();
+          },
+          onListenerError('certificates:owner')
+        )
+      );
+
+      this.firestoreUnsubs.push(
+        onSnapshot(
+          query(collection(db, 'certificates'), where('instructorUid', '==', uid)),
+          (snap) => {
+            if (attemptId !== this.connectionAttemptId) return;
+            mentoredCerts = snap.docs.map(mapCertDoc);
+            this.snapshot = {
+              ...this.snapshot,
+              certificates: mergeById(ownCerts, mentoredCerts),
+              lastSyncedAt: touchSync(),
+              loading: false,
+            };
+            this.emit();
+          },
+          onListenerError('certificates:instructor')
+        )
+      );
+    }
   }
 
   private reloadLocal() {
@@ -905,9 +1174,22 @@ class CodeSparkDataEngine {
   public async authenticateStudent(username: string, password: string): Promise<Student> {
     const normalized = username.trim().toLowerCase();
     const hash = await hashPassword(password);
-    const found = this.snapshot.students.find(
+    let found = this.snapshot.students.find(
       (s) => s.username.toLowerCase() === normalized && s.passwordHash === hash
     );
+    if (!found && this.snapshot.mode === 'firebase' && db) {
+      try {
+        const snap = await getDocs(
+          query(collection(db, 'students'), where('username', '==', normalized), limit(5))
+        );
+        const matched = snap.docs
+          .map(mapStudentDoc)
+          .find((s) => s.passwordHash === hash);
+        if (matched) found = matched;
+      } catch (err) {
+        console.warn('Direct student query skipped:', err);
+      }
+    }
     if (!found) {
       throw new Error('Username atau password siswa tidak cocok.');
     }
@@ -917,9 +1199,22 @@ class CodeSparkDataEngine {
   public async authenticateInstructor(username: string, password: string): Promise<Instructor> {
     const normalized = username.trim().toLowerCase();
     const hash = await hashPassword(password);
-    const found = this.snapshot.instructors.find(
+    let found = this.snapshot.instructors.find(
       (i) => i.username.toLowerCase() === normalized && i.passwordHash === hash
     );
+    if (!found && this.snapshot.mode === 'firebase' && db) {
+      try {
+        const snap = await getDocs(
+          query(collection(db, 'instructors'), where('username', '==', normalized), limit(5))
+        );
+        const matched = snap.docs
+          .map(mapInstructorDoc)
+          .find((i) => i.passwordHash === hash);
+        if (matched) found = matched;
+      } catch (err) {
+        console.warn('Direct instructor query skipped:', err);
+      }
+    }
     if (!found) {
       throw new Error('Username atau password instruktur tidak cocok.');
     }

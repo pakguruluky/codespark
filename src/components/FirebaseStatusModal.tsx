@@ -1,11 +1,27 @@
 import React, { useState } from 'react';
-import { Cloud, CloudOff, Copy, Check, X, LogOut, Database, ExternalLink, RefreshCw } from 'lucide-react';
-import { connectFirebaseWithGoogle, disconnectFirebaseGoogle, testConnection } from '../lib/firebase';
+import {
+  Cloud,
+  CloudOff,
+  Copy,
+  Check,
+  X,
+  LogOut,
+  Database,
+  ExternalLink,
+  RefreshCw,
+  ShieldAlert,
+} from 'lucide-react';
+import { connectFirebaseWithGoogle, disconnectFirebaseGoogle } from '../lib/firebase';
 import { firebaseConfig, isFirebaseConfigured } from '../firebaseConfig.js';
+import { dataEngine } from '../services/dataEngine';
+import type { FirebaseConnectionStatus } from '../types';
 
 interface Props {
   mode: 'firebase' | 'local';
+  firebaseStatus: FirebaseConnectionStatus;
+  firebaseError: string | null;
   firebaseUserEmail: string | null;
+  lastSyncedAt: string | null;
 }
 
 const CONFIG_SNIPPET = `// src/firebaseConfig.js (Terhubung ke ${firebaseConfig.projectId})
@@ -18,12 +34,17 @@ export const firebaseConfig = {
   appId: "${firebaseConfig.appId}"
 };`;
 
-export const FirebaseStatusModal: React.FC<Props> = ({ mode, firebaseUserEmail }) => {
+export const FirebaseStatusModal: React.FC<Props> = ({
+  mode,
+  firebaseStatus,
+  firebaseError,
+  firebaseUserEmail,
+  lastSyncedAt,
+}) => {
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const [connecting, setConnecting] = useState(false);
-  const [testing, setTesting] = useState(false);
-  const [testResult, setTestResult] = useState<string | null>(null);
+  const [retrying, setRetrying] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const configured = isFirebaseConfigured();
@@ -49,17 +70,13 @@ export const FirebaseStatusModal: React.FC<Props> = ({ mode, firebaseUserEmail }
     await disconnectFirebaseGoogle();
   };
 
-  const handleTestConnection = async () => {
-    setTesting(true);
-    setTestResult(null);
-    const res = await testConnection();
-    setTesting(false);
-    if (res.ok) {
-      setTestResult(`Firestore pada proyek "${firebaseConfig.projectId}" dapat dijangkau!`);
-    } else {
-      setTestResult(
-        `Firestore pada "${firebaseConfig.projectId}" belum dapat dijangkau. Pastikan Cloud Firestore Database (default) sudah dibuat di Firebase Console.`
-      );
+  const handleRetryConnection = async () => {
+    setError(null);
+    setRetrying(true);
+    try {
+      await dataEngine.retryFirebaseConnection();
+    } finally {
+      setRetrying(false);
     }
   };
 
@@ -69,25 +86,48 @@ export const FirebaseStatusModal: React.FC<Props> = ({ mode, firebaseUserEmail }
     setTimeout(() => setCopied(false), 1800);
   };
 
+  const formattedSyncTime = lastSyncedAt
+    ? new Date(lastSyncedAt).toLocaleTimeString('id-ID', {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+      })
+    : null;
+
+  const buttonBg =
+    firebaseStatus === 'connected'
+      ? 'bg-[#4ADE80]'
+      : firebaseStatus === 'connecting'
+        ? 'bg-[#38BDF8]'
+        : 'bg-[#FFE600]';
+
   return (
     <>
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className={`no-print fixed bottom-4 right-4 z-40 neo-btn px-3 py-2 text-xs font-bold flex items-center gap-2 cursor-pointer whitespace-nowrap ${
-          mode === 'firebase' ? 'bg-[#4ADE80]' : 'bg-[#FFE600]'
-        }`}
-        title="Pengaturan Sinkronisasi Database Realtime"
+        className={`no-print fixed bottom-4 right-4 z-40 neo-btn px-3 py-2 text-xs font-extrabold flex items-center gap-2 cursor-pointer whitespace-nowrap ${buttonBg}`}
+        title="Status Sinkronisasi Firebase Realtime"
       >
-        {mode === 'firebase' ? (
+        {firebaseStatus === 'connected' ? (
           <>
-            <Cloud className="w-4 h-4 shrink-0" />
-            <span>Firebase · {firebaseConfig.projectId}</span>
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-950 animate-pulse shrink-0" />
+            <span>Firebase Realtime · {firebaseConfig.projectId}</span>
+          </>
+        ) : firebaseStatus === 'connecting' ? (
+          <>
+            <RefreshCw className="w-3.5 h-3.5 animate-spin shrink-0" />
+            <span>Menghubungkan Firebase...</span>
+          </>
+        ) : firebaseStatus === 'auth_required' ? (
+          <>
+            <ShieldAlert className="w-4 h-4 shrink-0" />
+            <span>Firebase · Login Google</span>
           </>
         ) : (
           <>
             <CloudOff className="w-4 h-4 shrink-0" />
-            <span>Demo Lokal · Cloud Setup</span>
+            <span>Mode Lokal · Hubungkan Firebase</span>
           </>
         )}
       </button>
@@ -104,20 +144,22 @@ export const FirebaseStatusModal: React.FC<Props> = ({ mode, firebaseUserEmail }
             <div className="flex items-start justify-between gap-4 pb-4 border-b-2 border-black">
               <div className="flex items-center gap-3">
                 <div
-                  className={`w-10 h-10 border-2 border-black flex items-center justify-center shrink-0 ${
-                    mode === 'firebase' ? 'bg-[#4ADE80]' : 'bg-[#FFE600]'
-                  }`}
+                  className={`w-10 h-10 border-2 border-black flex items-center justify-center shrink-0 ${buttonBg}`}
                 >
                   <Database className="w-5 h-5 text-black" />
                 </div>
                 <div>
                   <h2 className="font-display text-xl font-extrabold">
-                    Firebase &amp; Deploy Vercel
+                    Firebase Firestore Realtime
                   </h2>
-                  <p className="text-xs text-neutral-700">
-                    {mode === 'firebase'
-                      ? `Terhubung ke ${firebaseConfig.projectId} (${firebaseUserEmail})`
-                      : `Proyek terkonfigurasi: ${firebaseConfig.projectId} (Mode Lokal aktif)`}
+                  <p className="text-xs text-neutral-700 font-semibold">
+                    {firebaseStatus === 'connected'
+                      ? `Terhubung Realtime ke ${firebaseConfig.projectId}${firebaseUserEmail ? ` (${firebaseUserEmail})` : ''}${formattedSyncTime ? ` · Sync ${formattedSyncTime}` : ''}`
+                      : firebaseStatus === 'connecting'
+                        ? `Menghubungkan ke ${firebaseConfig.projectId}...`
+                        : firebaseStatus === 'auth_required'
+                          ? `Proyek ${firebaseConfig.projectId} aktif — butuh Login Google`
+                          : `Proyek ${firebaseConfig.projectId} belum terjangkau (Mode Lokal aktif)`}
                   </p>
                 </div>
               </div>
@@ -136,53 +178,51 @@ export const FirebaseStatusModal: React.FC<Props> = ({ mode, firebaseUserEmail }
                 <div className="p-4 bg-white border-2 border-black space-y-3">
                   <h3 className="font-display font-bold text-base">
                     {mode === 'firebase'
-                      ? 'Firebase Firestore Aktif 100% Realtime'
+                      ? 'Sinkronisasi Realtime (onSnapshot) Aktif!'
                       : `Hubungkan ke Firebase (${firebaseConfig.projectId})`}
                   </h3>
                   <p className="text-sm text-neutral-700 leading-relaxed">
                     {mode === 'firebase'
-                      ? 'Seluruh data instruktur, kode akses, siswa, progres bintang, sertifikat, dan pengaturan nomor HP Admin tersinkronisasi langsung dengan Cloud Firestore.'
-                      : 'Konfigurasi Firebase Cloud untuk proyek Anda sudah terpasang dan siap deploy ke Vercel. Masuk dengan Google untuk mengaktifkan sinkronisasi Cloud Firestore.'}
+                      ? 'Seluruh data instruktur, kode akses, siswa, progres bintang, sertifikat, dan pengaturan nomor HP Admin kini tersinkronisasi 100% realtime lintas perangkat melalui Cloud Firestore onSnapshot.'
+                      : 'Aplikasi otomatis mencoba terhubung ke Cloud Firestore saat dibuka. Jika aturan keamanan memerlukan autentikasi Google, klik tombol di bawah untuk mengaktifkan sinkronisasi cloud.'}
                   </p>
-                  {error && (
-                    <div className="p-3 bg-[#FB7185]/25 border-2 border-black text-xs font-semibold">
-                      {error}
+
+                  {(error || firebaseError) && (
+                    <div className="p-3 bg-[#FFE600]/45 border-2 border-black text-xs font-bold leading-relaxed">
+                      {error || firebaseError}
                     </div>
                   )}
-                  {testResult && (
-                    <div className="p-3 bg-[#38BDF8]/25 border-2 border-black text-xs font-semibold">
-                      {testResult}
-                    </div>
-                  )}
+
                   <div className="flex flex-wrap gap-2.5">
-                    {mode === 'firebase' ? (
+                    {firebaseUserEmail ? (
                       <button
                         type="button"
                         onClick={handleDisconnect}
                         className="neo-btn bg-[#FB7185] px-4 py-2 text-xs sm:text-sm font-bold inline-flex items-center gap-2 cursor-pointer"
                       >
                         <LogOut className="w-4 h-4" />
-                        Putuskan Sesi Cloud
+                        Keluar Akun Google
                       </button>
                     ) : (
                       <button
                         type="button"
                         onClick={handleConnect}
                         disabled={connecting}
-                        className="neo-btn bg-[#4ADE80] px-4 py-2 text-xs sm:text-sm font-bold inline-flex items-center gap-2 cursor-pointer"
+                        className="neo-btn bg-[#4ADE80] px-4 py-2 text-xs sm:text-sm font-extrabold inline-flex items-center gap-2 cursor-pointer"
                       >
                         <Cloud className="w-4 h-4" />
                         {connecting ? 'Menghubungkan...' : 'Hubungkan Firebase (Google)'}
                       </button>
                     )}
+
                     <button
                       type="button"
-                      onClick={handleTestConnection}
-                      disabled={testing}
+                      onClick={handleRetryConnection}
+                      disabled={retrying}
                       className="neo-btn bg-white px-3.5 py-2 text-xs sm:text-sm font-bold inline-flex items-center gap-1.5 cursor-pointer"
                     >
-                      <RefreshCw className={`w-3.5 h-3.5 ${testing ? 'animate-spin' : ''}`} />
-                      {testing ? 'Menguji...' : 'Uji Koneksi Firestore'}
+                      <RefreshCw className={`w-3.5 h-3.5 ${retrying ? 'animate-spin' : ''}`} />
+                      {retrying ? 'Menghubungkan...' : 'Hubungkan Ulang'}
                     </button>
                   </div>
                 </div>
@@ -191,7 +231,7 @@ export const FirebaseStatusModal: React.FC<Props> = ({ mode, firebaseUserEmail }
               <div className="p-4 bg-white border-2 border-black space-y-3">
                 <div className="flex items-center justify-between gap-2">
                   <h3 className="font-display font-bold text-base">
-                    Checklist Deploy Vercel &amp; Firebase Console
+                    Checklist Firebase Console ({firebaseConfig.projectId}) &amp; Vercel
                   </h3>
                   <button
                     type="button"
@@ -204,18 +244,18 @@ export const FirebaseStatusModal: React.FC<Props> = ({ mode, firebaseUserEmail }
                 </div>
                 <ol className="text-xs text-neutral-800 space-y-1.5 list-decimal pl-4 leading-relaxed">
                   <li>
-                    Buka Firebase Console proyek <code className="font-mono font-bold">{firebaseConfig.projectId}</code> → aktifkan{' '}
-                    <strong>Firestore Database (default)</strong> dan salin aturan dari file{' '}
-                    <code className="font-mono bg-[#FFE600]/50 px-1">firestore.rules</code>.
+                    Buka <strong>Firestore Database</strong> pada proyek{' '}
+                    <code className="font-mono font-bold">{firebaseConfig.projectId}</code> lalu klik{' '}
+                    <strong>Create database</strong> (pilih database <code>(default)</code>).
                   </li>
                   <li>
-                    Buka <strong>Authentication → Sign-in method</strong> → aktifkan <strong>Google</strong>, lalu
-                    tambahkan domain <code className="font-mono bg-[#FFE600]/50 px-1">*.vercel.app</code> di{' '}
-                    <strong>Authorized domains</strong>.
+                    Pasang aturan keamanan dari file{' '}
+                    <code className="font-mono bg-[#FFE600]/50 px-1">firestore.rules</code> di tab{' '}
+                    <strong>Firestore → Rules</strong> lalu klik <strong>Publish</strong>.
                   </li>
                   <li>
-                    Deploy ke <strong>Vercel</strong> (file <code className="font-mono bg-[#FFE600]/50 px-1">vercel.json</code> sudah siap;
-                    Build Command: <code className="font-mono">npm run build</code>, Output: <code className="font-mono">dist</code>).
+                    Aktifkan <strong>Authentication → Google</strong> dan tambahkan domain Vercel Anda (serta domain preview) di{' '}
+                    <strong>Authentication → Settings → Authorized domains</strong>.
                   </li>
                 </ol>
                 <pre className="p-3 bg-neutral-950 text-[#4ADE80] border-2 border-black text-xs font-mono overflow-x-auto leading-relaxed">
@@ -224,12 +264,12 @@ export const FirebaseStatusModal: React.FC<Props> = ({ mode, firebaseUserEmail }
                 <div className="flex items-center justify-between text-xs text-neutral-600 pt-1">
                   <span>Koleksi: instructors · access_codes · students · progress · certificates · settings</span>
                   <a
-                    href={`https://console.firebase.google.com/project/${firebaseConfig.projectId}/overview`}
+                    href={`https://console.firebase.google.com/project/${firebaseConfig.projectId}/firestore`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="inline-flex items-center gap-1 font-bold text-black underline shrink-0"
                   >
-                    Console
+                    Buka Firestore
                     <ExternalLink className="w-3 h-3" />
                   </a>
                 </div>
@@ -241,4 +281,5 @@ export const FirebaseStatusModal: React.FC<Props> = ({ mode, firebaseUserEmail }
     </>
   );
 };
+
 

@@ -156,6 +156,8 @@ export interface ExecutionResult {
   errorLine?: number;
 }
 
+export type FirebaseConnectionStatus = 'connecting' | 'connected' | 'auth_required' | 'offline';
+
 export interface DataStoreSnapshot {
   instructors: Instructor[];
   accessCodes: AccessCode[];
@@ -165,6 +167,10 @@ export interface DataStoreSnapshot {
   settings: AppSettings;
   mode: 'firebase' | 'local';
   firebaseConnected: boolean;
+  firebaseStatus: FirebaseConnectionStatus;
+  firebaseError: string | null;
   firebaseUserEmail: string | null;
+  lastSyncedAt: string | null;
   loading: boolean;
 }
+

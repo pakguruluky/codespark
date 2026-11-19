@@ -11,13 +11,16 @@ import {
   KeyRound,
   UserPlus,
   LogIn,
+  Cloud,
 } from 'lucide-react';
 import { dataEngine } from '../services/dataEngine';
-import type { AppSession, UserRole } from '../types';
+import { connectFirebaseWithGoogle } from '../lib/firebase';
+import type { AppSession, FirebaseConnectionStatus, UserRole } from '../types';
 
 interface Props {
   initialMode: 'login' | 'register';
   initialRole?: UserRole;
+  firebaseStatus?: FirebaseConnectionStatus;
   onBack: () => void;
   onAuthenticated: (session: AppSession) => void;
 }
@@ -25,6 +28,7 @@ interface Props {
 export const AuthPage: React.FC<Props> = ({
   initialMode,
   initialRole = 'student',
+  firebaseStatus = 'connected',
   onBack,
   onAuthenticated,
 }) => {
@@ -182,6 +186,20 @@ export const AuthPage: React.FC<Props> = ({
               Daftar Siswa
             </button>
           </div>
+
+          {firebaseStatus === 'auth_required' && (
+            <div className="mb-5 p-3 bg-[#FFE600]/45 border-2 border-black flex flex-wrap items-center justify-between gap-2 text-xs font-bold">
+              <span>Aktifkan sinkronisasi Firebase Cloud Realtime dengan akun Google:</span>
+              <button
+                type="button"
+                onClick={() => void connectFirebaseWithGoogle().catch(() => undefined)}
+                className="neo-btn bg-[#4ADE80] px-2.5 py-1 text-xs font-extrabold inline-flex items-center gap-1 cursor-pointer"
+              >
+                <Cloud className="w-3.5 h-3.5" />
+                Hubungkan Google
+              </button>
+            </div>
+          )}
 
           {error && (
             <div className="mb-5 p-3.5 bg-[#FB7185]/30 border-2 border-black shadow-[3px_3px_0px_0px_#000] flex items-start gap-2.5 text-sm font-bold">

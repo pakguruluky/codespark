@@ -82,6 +82,7 @@ export default function App() {
         <AuthPage
           initialMode={publicView.mode}
           initialRole={publicView.role}
+          firebaseStatus={store.firebaseStatus}
           onBack={() => setPublicView({ page: 'landing' })}
           onAuthenticated={handleAuthenticated}
         />
@@ -89,7 +90,10 @@ export default function App() {
 
       <FirebaseStatusModal
         mode={store.mode}
+        firebaseStatus={store.firebaseStatus}
+        firebaseError={store.firebaseError}
         firebaseUserEmail={store.firebaseUserEmail}
+        lastSyncedAt={store.lastSyncedAt}
       />
     </ErrorBoundary>
   );
