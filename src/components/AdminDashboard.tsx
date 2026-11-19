@@ -24,6 +24,7 @@ import {
   Phone,
   MessageCircle,
   Save,
+  Cloud,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -42,6 +43,7 @@ import {
 } from 'recharts';
 import type { AppSession, CertificateRecord, DataStoreSnapshot } from '../types';
 import { dataEngine } from '../services/dataEngine';
+import { connectFirebaseWithGoogle } from '../lib/firebase';
 import { LEVELS, TIERS } from '../data/levels';
 import { formatShortDate, formatWhatsAppUrl, generateAccessCode } from '../utils/crypto';
 import { CertificateView } from './CertificateView';
@@ -396,6 +398,23 @@ export const AdminDashboard: React.FC<Props> = ({ session, store, onLogout }) =>
 
         {/* Main Content */}
         <main className="flex-1 p-4 sm:p-6 lg:p-8 pb-24 lg:pb-12 space-y-8 overflow-x-hidden">
+          {store.mode !== 'firebase' && (
+            <div className="neo-card bg-[#FFE600] p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="text-xs sm:text-sm font-bold text-black leading-relaxed">
+                <strong>Sinkronisasi Firebase Cloud (`codespark-a5c49`) siap dihubungkan!</strong>{' '}
+                Masuk dengan akun Google Admin (<code className="font-mono">pakguruluky@gmail.com</code>) untuk mengaktifkan penyimpanan &amp; analitik Cloud Firestore realtime lintas perangkat.
+              </div>
+              <button
+                type="button"
+                onClick={() => void connectFirebaseWithGoogle().catch(() => undefined)}
+                className="neo-btn bg-[#4ADE80] px-4 py-2 text-xs sm:text-sm font-extrabold inline-flex items-center justify-center gap-2 shrink-0 cursor-pointer"
+              >
+                <Cloud className="w-4 h-4" />
+                Hubungkan Firebase (Google)
+              </button>
+            </div>
+          )}
+
           {/* 4 Realtime KPI Cards */}
           <div className="grid grid-cols-2 xl:grid-cols-4 gap-4 sm:gap-5">
             {[

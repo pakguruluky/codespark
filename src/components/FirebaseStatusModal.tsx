@@ -31,7 +31,8 @@ export const firebaseConfig = {
   projectId: "${firebaseConfig.projectId}",
   storageBucket: "${firebaseConfig.storageBucket}",
   messagingSenderId: "${firebaseConfig.messagingSenderId}",
-  appId: "${firebaseConfig.appId}"
+  appId: "${firebaseConfig.appId}",
+  firestoreDatabaseId: "${firebaseConfig.firestoreDatabaseId}"
 };`;
 
 export const FirebaseStatusModal: React.FC<Props> = ({
@@ -244,18 +245,18 @@ export const FirebaseStatusModal: React.FC<Props> = ({
                 </div>
                 <ol className="text-xs text-neutral-800 space-y-1.5 list-decimal pl-4 leading-relaxed">
                   <li>
-                    Buka <strong>Firestore Database</strong> pada proyek{' '}
-                    <code className="font-mono font-bold">{firebaseConfig.projectId}</code> lalu klik{' '}
-                    <strong>Create database</strong> (pilih database <code>(default)</code>).
+                    Database Firestore <code className="font-mono font-bold">{firebaseConfig.firestoreDatabaseId}</code>{' '}
+                    pada proyek <code className="font-mono font-bold">{firebaseConfig.projectId}</code> dan aturan{' '}
+                    <code className="font-mono bg-[#FFE600]/50 px-1">firestore.rules</code> sudah aktif.
                   </li>
                   <li>
-                    Pasang aturan keamanan dari file{' '}
-                    <code className="font-mono bg-[#FFE600]/50 px-1">firestore.rules</code> di tab{' '}
-                    <strong>Firestore → Rules</strong> lalu klik <strong>Publish</strong>.
+                    Klik tombol <strong>Hubungkan Firebase (Google)</strong> di atas dengan akun Google Anda agar
+                    sinkronisasi Cloud Firestore 100% realtime menyala (indikator berubah hijau).
                   </li>
                   <li>
-                    Aktifkan <strong>Authentication → Google</strong> dan tambahkan domain Vercel Anda (serta domain preview) di{' '}
-                    <strong>Authentication → Settings → Authorized domains</strong>.
+                    Saat deploy ke <strong>Vercel</strong>, tambahkan domain Vercel Anda (mis.{' '}
+                    <code className="font-mono bg-[#FFE600]/50 px-1">nama-app.vercel.app</code>) di{' '}
+                    <strong>Firebase Console → Authentication → Settings → Authorized domains</strong>.
                   </li>
                 </ol>
                 <pre className="p-3 bg-neutral-950 text-[#4ADE80] border-2 border-black text-xs font-mono overflow-x-auto leading-relaxed">

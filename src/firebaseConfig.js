@@ -12,8 +12,9 @@ export const firebaseConfig = {
   projectId: env.VITE_FIREBASE_PROJECT_ID || 'codespark-a5c49',
   storageBucket: env.VITE_FIREBASE_STORAGE_BUCKET || 'codespark-a5c49.firebasestorage.app',
   messagingSenderId: env.VITE_FIREBASE_MESSAGING_SENDER_ID || '108743048688',
-  appId: env.VITE_FIREBASE_APP_ID || '1:108743048688:web:23ba5b20d86c7293be7135',
-  firestoreDatabaseId: env.VITE_FIREBASE_DATABASE_ID || '(default)',
+  appId: env.VITE_FIREBASE_APP_ID || '1:108743048688:web:28dc4c241be0e5bdbe7135',
+  firestoreDatabaseId:
+    env.VITE_FIREBASE_DATABASE_ID || 'ai-studio-938dd198-ef1c-41d0-af0f-fdd235abce03',
 };
 
 export function isFirebaseConfigured() {
