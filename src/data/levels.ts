@@ -1,0 +1,437 @@
+import type { LevelDefinition, TierId } from '../types';
+
+export interface TierMeta {
+  id: TierId;
+  number: string;
+  name: string;
+  shortName: string;
+  subtitle: string;
+  description: string;
+  accentColor: string;
+  badgeText: string;
+  certificateTitle: string;
+}
+
+export const TIERS: TierMeta[] = [
+  {
+    id: 'pemula',
+    number: '01',
+    name: 'Tingkat Pemula',
+    shortName: 'Pemula',
+    subtitle: 'Dasar Algoritma & Loop',
+    description: 'Pelajari urutan instruksi, navigasi arah, dan kekuatan pengulangan (loop) untuk menyelesaikan misi pertama.',
+    accentColor: '#4ADE80',
+    badgeText: '3 Level · Dasar',
+    certificateTitle: 'Dasar Algoritma & Pengulangan (Tingkat Pemula)',
+  },
+  {
+    id: 'menengah',
+    number: '02',
+    name: 'Tingkat Menengah',
+    shortName: 'Menengah',
+    subtitle: 'Logika Percabangan & Pola',
+    description: 'Kuasi pengambilan keputusan dengan sensor if/else, penghindaran rintangan, dan pengenalan pola berulang.',
+    accentColor: '#38BDF8',
+    badgeText: '3 Level · Logika',
+    certificateTitle: 'Logika Percabangan & Pola (Tingkat Menengah)',
+  },
+  {
+    id: 'lanjutan',
+    number: '03',
+    name: 'Tingkat Lanjutan',
+    shortName: 'Lanjutan',
+    subtitle: 'Algoritma Kompleks & Tantangan AI',
+    description: 'Rancang algoritma navigasi otonom untuk menembus labirin, optimasi baris kode, dan misi AI Navigator.',
+    accentColor: '#C084FC',
+    badgeText: '3 Level · AI & Optimasi',
+    certificateTitle: 'Algoritma Kompleks & AI Navigator (Tingkat Lanjutan)',
+  },
+];
+
+export const LEVELS: LevelDefinition[] = [
+  // ===================== TIER 1: PEMULA =====================
+  {
+    id: 'p1',
+    order: 1,
+    tier: 'pemula',
+    tierLabel: 'Pemula',
+    title: 'Langkah Pertama',
+    subtitle: 'Gunakan forward(4) untuk memandu Panda',
+    concept: 'Sequence (Algoritma Berurutan)',
+    mission: 'Gunakan perintah forward(a) agar Panda berjalan lurus mengambil permata dan mencapai lentera tujuan. Coba jalankan blok forward(4) yang sudah siap!',
+    hint: 'Parameter angka di dalam forward(a) menentukan jumlah kotak langkah Panda. Jarak Panda ke tujuan adalah 4 kotak, jadi forward(4) langsung menyelesaikan misi ini!',
+    gridWidth: 5,
+    gridHeight: 5,
+    start: { x: 0, y: 2, dir: 'E' },
+    goal: { x: 4, y: 2 },
+    gems: [
+      { x: 2, y: 2 },
+      { x: 3, y: 2 },
+    ],
+    walls: [
+      { x: 1, y: 0 },
+      { x: 3, y: 0 },
+      { x: 1, y: 4 },
+      { x: 3, y: 4 },
+    ],
+    optimalLines: 4,
+    twoStarLines: 6,
+    starterBlocks: [{ id: 'init_1', type: 'move_forward', steps: 4 }],
+    recommendedBlocks: ['move_forward', 'turn_left', 'turn_right'],
+  },
+  {
+    id: 'p2',
+    order: 2,
+    tier: 'pemula',
+    tierLabel: 'Pemula',
+    title: 'Belok & Ambil Permata',
+    subtitle: 'Ubah arah Panda sebelum menabrak batu',
+    concept: 'Navigasi & Rotasi Arah',
+    mission: 'Maju 2 kotak ke permata pertama, gunakan turn("left") untuk berbelok ke jalur batu atas, lalu maju 3 kotak ke lentera tujuan!',
+    hint: 'Gunakan forward(2), kemudian pasang blok turn("left"), lalu tambahkan forward(3) untuk langsung meraih 3 bintang!',
+    gridWidth: 5,
+    gridHeight: 5,
+    start: { x: 0, y: 3, dir: 'E' },
+    goal: { x: 2, y: 0 },
+    gems: [
+      { x: 2, y: 3 },
+      { x: 2, y: 1 },
+    ],
+    walls: [
+      { x: 3, y: 3 },
+      { x: 3, y: 2 },
+      { x: 0, y: 1 },
+      { x: 1, y: 1 },
+    ],
+    optimalLines: 6,
+    twoStarLines: 9,
+    starterBlocks: [{ id: 'init_p2_1', type: 'move_forward', steps: 2 }],
+    recommendedBlocks: ['move_forward', 'turn_left', 'turn_right'],
+  },
+  {
+    id: 'p3',
+    order: 3,
+    tier: 'pemula',
+    tierLabel: 'Pemula',
+    title: 'Pengulangan (Loop)',
+    subtitle: 'Gunakan for / repeat agar kode super ringkas',
+    concept: 'For Loop / Pengulangan',
+    mission: 'Ambil keempat permata di koridor hutan dan capai tujuan menggunakan blok repeat(5) atau forward(5)!',
+    hint: 'Ubah angka pada blok repeat menjadi 5 (berisi forward(1)) atau langsung gunakan forward(5) untuk menyelesaikan lorong dalam ≤ 3 baris kode!',
+    gridWidth: 6,
+    gridHeight: 5,
+    start: { x: 0, y: 2, dir: 'E' },
+    goal: { x: 5, y: 2 },
+    gems: [
+      { x: 1, y: 2 },
+      { x: 2, y: 2 },
+      { x: 3, y: 2 },
+      { x: 4, y: 2 },
+    ],
+    walls: [
+      { x: 0, y: 1 },
+      { x: 1, y: 1 },
+      { x: 2, y: 1 },
+      { x: 3, y: 1 },
+      { x: 4, y: 1 },
+      { x: 5, y: 1 },
+      { x: 0, y: 3 },
+      { x: 1, y: 3 },
+      { x: 2, y: 3 },
+      { x: 3, y: 3 },
+      { x: 4, y: 3 },
+      { x: 5, y: 3 },
+    ],
+    optimalLines: 3,
+    twoStarLines: 5,
+    starterBlocks: [
+      {
+        id: 'init_p3_1',
+        type: 'repeat',
+        count: 3,
+        children: [{ id: 'init_p3_2', type: 'move_forward', steps: 1 }],
+      },
+    ],
+    recommendedBlocks: ['move_forward', 'repeat'],
+  },
+
+  // ===================== TIER 2: MENENGAH =====================
+  {
+    id: 'm1',
+    order: 4,
+    tier: 'menengah',
+    tierLabel: 'Menengah',
+    title: 'Hindari Rintangan',
+    subtitle: 'Cari jalur memutar melewati blokade batu',
+    concept: 'Pathfinding & Kombinasi Langkah',
+    mission: 'Batu besar menutup jalan lurus! Arahkan Panda memutar lewat jalan batu bagian atas untuk mengambil 3 permata dan turun ke lentera.',
+    hint: 'Susun: forward(1), turn("left"), forward(2), turn("right"), forward(3), turn("right"), forward(2).',
+    gridWidth: 6,
+    gridHeight: 5,
+    start: { x: 0, y: 3, dir: 'E' },
+    goal: { x: 4, y: 3 },
+    gems: [
+      { x: 1, y: 3 },
+      { x: 1, y: 1 },
+      { x: 4, y: 1 },
+    ],
+    walls: [
+      { x: 2, y: 3 },
+      { x: 3, y: 3 },
+      { x: 2, y: 2 },
+      { x: 3, y: 2 },
+    ],
+    optimalLines: 10,
+    twoStarLines: 14,
+    starterBlocks: [
+      { id: 'init_m1_1', type: 'move_forward', steps: 1 },
+      { id: 'init_m1_2', type: 'turn_left' },
+    ],
+    recommendedBlocks: ['move_forward', 'turn_left', 'turn_right', 'repeat'],
+  },
+  {
+    id: 'm2',
+    order: 5,
+    tier: 'menengah',
+    tierLabel: 'Menengah',
+    title: 'Percabangan If / Else',
+    subtitle: 'Biarkan Panda memeriksa jalan di depannya otomatis',
+    concept: 'Conditional Logic (if / else)',
+    mission: 'Gunakan sensor path_clear() di dalam repeat(7) agar Panda otomatis belok kiri saat menemukan penghalang!',
+    hint: 'Di dalam repeat(7), pasang blok if path_clear(): jika aman lakukan forward(1), jika terhalang (else) lakukan turn("left").',
+    gridWidth: 6,
+    gridHeight: 6,
+    start: { x: 0, y: 4, dir: 'E' },
+    goal: { x: 3, y: 1 },
+    gems: [
+      { x: 2, y: 4 },
+      { x: 3, y: 2 },
+    ],
+    walls: [
+      { x: 4, y: 4 },
+      { x: 4, y: 3 },
+      { x: 4, y: 2 },
+      { x: 1, y: 2 },
+      { x: 2, y: 2 },
+      { x: 1, y: 3 },
+      { x: 2, y: 3 },
+    ],
+    optimalLines: 5,
+    twoStarLines: 8,
+    starterBlocks: [
+      {
+        id: 'init_m2_1',
+        type: 'repeat',
+        count: 7,
+        children: [
+          {
+            id: 'init_m2_2',
+            type: 'if_path_clear',
+            children: [{ id: 'init_m2_3', type: 'move_forward', steps: 1 }],
+            elseChildren: [],
+          },
+        ],
+      },
+    ],
+    recommendedBlocks: ['move_forward', 'turn_left', 'turn_right', 'repeat', 'if_path_clear'],
+  },
+  {
+    id: 'm3',
+    order: 6,
+    tier: 'menengah',
+    tierLabel: 'Menengah',
+    title: 'Pengumpulan Berpola',
+    subtitle: 'Temukan pola anak tangga yang berulang',
+    concept: 'Pattern Recognition (Pola Tangga)',
+    mission: 'Permata tersusun seperti tangga batu! Temukan 1 pola berulang dalam repeat(3) lalu akhiri dengan forward(1).',
+    hint: 'Isi repeat(3) dengan: forward(1), turn("left"), forward(1), turn("right"). Lalu tambahkan forward(1) di luar loop!',
+    gridWidth: 6,
+    gridHeight: 6,
+    start: { x: 0, y: 5, dir: 'E' },
+    goal: { x: 4, y: 2 },
+    gems: [
+      { x: 1, y: 5 },
+      { x: 2, y: 4 },
+      { x: 3, y: 3 },
+    ],
+    walls: [
+      { x: 2, y: 5 },
+      { x: 3, y: 4 },
+      { x: 4, y: 3 },
+      { x: 0, y: 4 },
+      { x: 1, y: 3 },
+      { x: 2, y: 2 },
+    ],
+    optimalLines: 6,
+    twoStarLines: 10,
+    starterBlocks: [
+      {
+        id: 'init_m3_1',
+        type: 'repeat',
+        count: 3,
+        children: [
+          { id: 'init_m3_2', type: 'move_forward', steps: 1 },
+          { id: 'init_m3_3', type: 'turn_left' },
+        ],
+      },
+    ],
+    recommendedBlocks: ['move_forward', 'turn_left', 'turn_right', 'repeat'],
+  },
+
+  // ===================== TIER 3: LANJUTAN =====================
+  {
+    id: 'l1',
+    order: 7,
+    tier: 'lanjutan',
+    tierLabel: 'Lanjutan',
+    title: 'Labirin Cerdas',
+    subtitle: 'Navigasi koridor spiral dengan sensor otomatis',
+    concept: 'Autonomous Maze Navigation',
+    mission: 'Tembus koridor labirin hutan dengan 3 belokan hanya menggunakan satu loop repeat(13) dan sensor path_clear()!',
+    hint: 'Semua belokan di labirin selalu ke kiri saat terhalang. Gunakan repeat(13) berisi if path_clear(): forward(1) else: turn("left").',
+    gridWidth: 7,
+    gridHeight: 6,
+    start: { x: 0, y: 5, dir: 'E' },
+    goal: { x: 1, y: 1 },
+    gems: [
+      { x: 2, y: 5 },
+      { x: 4, y: 3 },
+      { x: 2, y: 1 },
+    ],
+    walls: [
+      { x: 5, y: 5 },
+      { x: 5, y: 4 },
+      { x: 5, y: 3 },
+      { x: 5, y: 2 },
+      { x: 4, y: 0 },
+      { x: 3, y: 0 },
+      { x: 2, y: 0 },
+      { x: 1, y: 3 },
+      { x: 2, y: 3 },
+      { x: 3, y: 3 },
+      { x: 2, y: 4 },
+      { x: 3, y: 4 },
+      { x: 0, y: 1 },
+    ],
+    optimalLines: 5,
+    twoStarLines: 9,
+    starterBlocks: [
+      {
+        id: 'init_l1_1',
+        type: 'repeat',
+        count: 13,
+        children: [
+          {
+            id: 'init_l1_2',
+            type: 'if_path_clear',
+            children: [{ id: 'init_l1_3', type: 'move_forward', steps: 1 }],
+            elseChildren: [{ id: 'init_l1_4', type: 'turn_left' }],
+          },
+        ],
+      },
+    ],
+    recommendedBlocks: ['move_forward', 'turn_left', 'turn_right', 'repeat', 'if_path_clear'],
+  },
+  {
+    id: 'l2',
+    order: 8,
+    tier: 'lanjutan',
+    tierLabel: 'Lanjutan',
+    title: 'Optimasi Langkah Efisien',
+    subtitle: 'Raih 4 permata dengan kode sehemat mungkin',
+    concept: 'Code Optimization & Sensor Turning',
+    mission: 'Panda menghadap ke Utara. Susun algoritma otonom (maksimal 5 baris) untuk menyapu 4 permata dan masuk ke tujuan.',
+    hint: 'Saat bertemu penghalang, Panda selalu perlu belok kanan! Gunakan repeat(12) dengan if path_clear(): forward(1) else: turn("right").',
+    gridWidth: 7,
+    gridHeight: 6,
+    start: { x: 1, y: 5, dir: 'N' },
+    goal: { x: 5, y: 3 },
+    gems: [
+      { x: 1, y: 3 },
+      { x: 1, y: 1 },
+      { x: 3, y: 1 },
+      { x: 5, y: 1 },
+    ],
+    walls: [
+      { x: 1, y: 0 },
+      { x: 6, y: 1 },
+      { x: 3, y: 3 },
+      { x: 3, y: 4 },
+      { x: 3, y: 5 },
+      { x: 5, y: 4 },
+    ],
+    optimalLines: 5,
+    twoStarLines: 10,
+    starterBlocks: [
+      {
+        id: 'init_l2_1',
+        type: 'repeat',
+        count: 12,
+        children: [],
+      },
+    ],
+    recommendedBlocks: ['move_forward', 'turn_left', 'turn_right', 'repeat', 'if_path_clear'],
+  },
+  {
+    id: 'l3',
+    order: 9,
+    tier: 'lanjutan',
+    tierLabel: 'Lanjutan',
+    title: 'Misi AI Navigator',
+    subtitle: 'Tantangan final: navigasi otonom 4 sudut',
+    concept: 'AI Decision Loop (Sense-Plan-Act)',
+    mission: 'Program AI Navigator agar memindai 4 sudut pulau, mengumpulkan seluruh 4 permata energi, dan berlabuh di lentera AI Core!',
+    hint: 'Terapkan siklus AI Sense-Plan-Act: repeat(16) berisi if path_clear(): forward(1) else: turn("left").',
+    gridWidth: 7,
+    gridHeight: 7,
+    start: { x: 0, y: 6, dir: 'E' },
+    goal: { x: 1, y: 4 },
+    gems: [
+      { x: 2, y: 6 },
+      { x: 4, y: 6 },
+      { x: 4, y: 4 },
+      { x: 2, y: 2 },
+    ],
+    walls: [
+      { x: 5, y: 6 },
+      { x: 5, y: 5 },
+      { x: 4, y: 1 },
+      { x: 0, y: 2 },
+      { x: 2, y: 4 },
+      { x: 3, y: 4 },
+      { x: 2, y: 3 },
+      { x: 3, y: 3 },
+      { x: 1, y: 5 },
+    ],
+    optimalLines: 5,
+    twoStarLines: 11,
+    starterBlocks: [
+      {
+        id: 'init_l3_1',
+        type: 'repeat',
+        count: 16,
+        children: [
+          {
+            id: 'init_l3_2',
+            type: 'if_path_clear',
+            children: [{ id: 'init_l3_3', type: 'move_forward', steps: 1 }],
+            elseChildren: [],
+          },
+        ],
+      },
+    ],
+    recommendedBlocks: ['move_forward', 'turn_left', 'turn_right', 'repeat', 'if_path_clear', 'if_gem_ahead'],
+  },
+];
+
+export function getLevelsByTier(tier: TierId): LevelDefinition[] {
+  return LEVELS.filter((l) => l.tier === tier);
+}
+
+export function getLevelById(id: string): LevelDefinition | undefined {
+  return LEVELS.find((l) => l.id === id);
+}
+
+export function getTierMeta(tier: TierId): TierMeta {
+  return TIERS.find((t) => t.id === tier) || TIERS[0];
+}
