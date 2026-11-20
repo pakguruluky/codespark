@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   ArrowRight,
   ArrowUp,
@@ -16,6 +16,8 @@ import {
   Lock,
   Phone,
   BookOpen,
+  Presentation,
+  GripVertical,
 } from 'lucide-react';
 import type {
   BlockType,
@@ -24,6 +26,7 @@ import type {
   CodeLanguage,
   Direction,
   ExecutionFrame,
+  ExecutionResult,
   LevelDefinition,
 } from '../types';
 import { blocksToCode, executeCode } from '../engine/interpreter';
@@ -45,6 +48,7 @@ interface Props {
   onSelectLevel: (levelId: string) => void;
   onOpenCertificates: () => void;
   onOpenModule?: (tier: LevelDefinition['tier']) => void;
+  onOpenMedia?: (tier: LevelDefinition['tier']) => void;
   onLevelComplete: (payload: {
     levelId: string;
     tier: LevelDefinition['tier'];
@@ -74,6 +78,59 @@ function cloneBlocks(blocks: CodeBlockItem[]): CodeBlockItem[] {
   }));
 }
 
+/** Exact 1-to-1 line number mapping mirroring blocksToCode() for live active block highlighting */
+function computeBlockLineMap(
+  blocks: CodeBlockItem[],
+  language: CodeLanguage
+): Map<string, { start: number; end: number }> {
+  const map = new Map<string, { start: number; end: number }>();
+  let line = 1;
+
+  const walk = (list: CodeBlockItem[]) => {
+    for (const block of list) {
+      const start = line;
+      if (block.type === 'move_forward' || block.type === 'turn_left' || block.type === 'turn_right') {
+        line += 1;
+        map.set(block.id, { start, end: start });
+      } else if (block.type === 'repeat') {
+        line += 1; // header
+        if (block.children && block.children.length > 0) {
+          walk(block.children);
+        } else {
+          line += 1; // pass / comment
+        }
+        if (language === 'javascript') line += 1; // closing brace
+        map.set(block.id, { start, end: line - 1 });
+      } else if (block.type === 'if_path_clear') {
+        line += 1; // if header
+        if (block.children && block.children.length > 0) {
+          walk(block.children);
+        } else {
+          line += 1;
+        }
+        if (block.elseChildren && block.elseChildren.length > 0) {
+          line += 1; // else header
+          walk(block.elseChildren);
+        }
+        if (language === 'javascript') line += 1; // closing brace
+        map.set(block.id, { start, end: line - 1 });
+      } else if (block.type === 'if_gem_ahead') {
+        line += 1; // if header
+        if (block.children && block.children.length > 0) {
+          walk(block.children);
+        } else {
+          line += 1;
+        }
+        if (language === 'javascript') line += 1; // closing brace
+        map.set(block.id, { start, end: line - 1 });
+      }
+    }
+  };
+
+  walk(blocks);
+  return map;
+}
+
 export const CodingStudio: React.FC<Props> = ({
   level,
   nextLevel,
@@ -88,6 +145,7 @@ export const CodingStudio: React.FC<Props> = ({
   onSelectLevel,
   onOpenCertificates,
   onOpenModule,
+  onOpenMedia,
   onLevelComplete,
 }) => {
   const [activeTab, setActiveTab] = useState<StudioTab>('blocks');
@@ -130,6 +188,29 @@ export const CodingStudio: React.FC<Props> = ({
   } | null>(null);
 
   const timerRef = useRef<number | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const stepSessionRef = useRef<{
+    codeKey: string;
+    result: ExecutionResult;
+    nextIndex: number;
+    effectiveLang: CodeLanguage;
+    codeToRun: string;
+  } | null>(null);
+  const [dragOverId, setDragOverId] = useState<string | null>(null);
+
+  const blockLineMap = useMemo(
+    () => computeBlockLineMap(blocks, textLang),
+    [blocks, textLang]
+  );
+
+  const liveEffectiveLines = useMemo(() => {
+    const codeStr = activeTab === 'blocks' ? blocksToCode(blocks, textLang) : textCode;
+    return codeStr
+      .split('\n')
+      .map((l) => l.trim())
+      .filter((l) => l && !l.startsWith('#') && !l.startsWith('//') && l !== '}' && l !== 'pass')
+      .length;
+  }, [activeTab, blocks, textLang, textCode]);
 
   const stopTimer = () => {
     if (timerRef.current !== null) {
@@ -141,6 +222,7 @@ export const CodingStudio: React.FC<Props> = ({
   // Reset on level change
   useEffect(() => {
     stopTimer();
+    stepSessionRef.current = null;
     const initialBlocks = cloneBlocks(level.starterBlocks);
     setBlocks(initialBlocks);
     setTextCode(blocksToCode(initialBlocks, textLang));
@@ -165,6 +247,7 @@ export const CodingStudio: React.FC<Props> = ({
     if (activeTab === 'blocks') {
       setTextCode(blocksToCode(blocks, textLang));
     }
+    stepSessionRef.current = null;
   }, [blocks, textLang, activeTab]);
 
   useEffect(() => {
@@ -218,6 +301,7 @@ export const CodingStudio: React.FC<Props> = ({
 
   const resetArena = () => {
     stopTimer();
+    stepSessionRef.current = null;
     setRobotX(level.start.x);
     setRobotY(level.start.y);
     setRobotDir(level.start.dir);
@@ -311,26 +395,199 @@ export const CodingStudio: React.FC<Props> = ({
     });
   };
 
-  const handleAddBlock = (type: BlockType) => {
+  const createNewBlock = (type: BlockType): CodeBlockItem => ({
+    id: uid(),
+    type,
+    ...(type === 'move_forward' ? { steps: Math.max(1, Math.min(15, toolboxForwardSteps)) } : {}),
+    ...(type === 'repeat'
+      ? { count: Math.max(1, Math.min(25, toolboxRepeatCount)), children: [] }
+      : {}),
+    ...(type === 'if_path_clear' ? { children: [], elseChildren: [] } : {}),
+    ...(type === 'if_gem_ahead' ? { children: [] } : {}),
+  });
+
+  const handleAddBlock = (type: BlockType, destOverride?: TargetContainer) => {
     soundEngine.playBlockSnap();
-    const newBlock: CodeBlockItem = {
-      id: uid(),
-      type,
-      ...(type === 'move_forward' ? { steps: Math.max(1, Math.min(15, toolboxForwardSteps)) } : {}),
-      ...(type === 'repeat'
-        ? { count: Math.max(1, Math.min(25, toolboxRepeatCount)), children: [] }
-        : {}),
-      ...(type === 'if_path_clear' ? { children: [], elseChildren: [] } : {}),
-      ...(type === 'if_gem_ahead' ? { children: [] } : {}),
-    };
-    setBlocks((prev) => insertBlockInTree(prev, newBlock, target));
+    const newBlock = createNewBlock(type);
+    const dest = destOverride || target;
+    setBlocks((prev) => insertBlockInTree(prev, newBlock, dest));
     if (type === 'repeat' || type === 'if_path_clear' || type === 'if_gem_ahead') {
       setTarget({ kind: 'children', blockId: newBlock.id });
     }
   };
 
+  // Drag-and-Drop Helpers (supports dragging from Toolbox or reordering Workspace blocks)
+  const findBlockInTree = (list: CodeBlockItem[], id: string): CodeBlockItem | null => {
+    for (const item of list) {
+      if (item.id === id) return item;
+      if (item.children) {
+        const found = findBlockInTree(item.children, id);
+        if (found) return found;
+      }
+      if (item.elseChildren) {
+        const found = findBlockInTree(item.elseChildren, id);
+        if (found) return found;
+      }
+    }
+    return null;
+  };
+
+  const containsId = (node: CodeBlockItem, id: string): boolean => {
+    if (node.id === id) return true;
+    if (node.children?.some((c) => containsId(c, id))) return true;
+    if (node.elseChildren?.some((c) => containsId(c, id))) return true;
+    return false;
+  };
+
+  const insertBeforeInTree = (
+    list: CodeBlockItem[],
+    targetId: string,
+    newBlock: CodeBlockItem
+  ): CodeBlockItem[] => {
+    const idx = list.findIndex((b) => b.id === targetId);
+    if (idx !== -1) {
+      const copy = [...list];
+      copy.splice(idx, 0, newBlock);
+      return copy;
+    }
+    return list.map((item) => ({
+      ...item,
+      children: item.children ? insertBeforeInTree(item.children, targetId, newBlock) : item.children,
+      elseChildren: item.elseChildren
+        ? insertBeforeInTree(item.elseChildren, targetId, newBlock)
+        : item.elseChildren,
+    }));
+  };
+
+  const handleToolboxDragStart = (e: React.DragEvent, blockType: BlockType) => {
+    e.dataTransfer.setData(
+      'application/x-codespark-block',
+      JSON.stringify({ source: 'toolbox', blockType })
+    );
+    e.dataTransfer.effectAllowed = 'copy';
+  };
+
+  const handleWorkspaceDragStart = (e: React.DragEvent, blockId: string) => {
+    e.stopPropagation();
+    e.dataTransfer.setData(
+      'application/x-codespark-block',
+      JSON.stringify({ source: 'workspace', blockId })
+    );
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const parseDragPayload = (
+    e: React.DragEvent
+  ): { source: 'toolbox'; blockType: BlockType } | { source: 'workspace'; blockId: string } | null => {
+    try {
+      const raw = e.dataTransfer.getData('application/x-codespark-block');
+      if (!raw) return null;
+      return JSON.parse(raw);
+    } catch {
+      return null;
+    }
+  };
+
+  const handleDropOnContainer = (e: React.DragEvent, dest: TargetContainer) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOverId(null);
+    const payload = parseDragPayload(e);
+    if (!payload) return;
+
+    if (payload.source === 'toolbox') {
+      handleAddBlock(payload.blockType, dest);
+      return;
+    }
+
+    setBlocks((prev) => {
+      const dragged = findBlockInTree(prev, payload.blockId);
+      if (!dragged) return prev;
+      if (dest.kind !== 'root' && containsId(dragged, dest.blockId)) return prev;
+      const stripped = removeBlockFromTree(prev, payload.blockId);
+      soundEngine.playBlockSnap();
+      return insertBlockInTree(stripped, dragged, dest);
+    });
+  };
+
+  const handleDropOnBlock = (e: React.DragEvent, targetBlockId: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOverId(null);
+    const payload = parseDragPayload(e);
+    if (!payload) return;
+
+    if (payload.source === 'toolbox') {
+      soundEngine.playBlockSnap();
+      const newBlock = createNewBlock(payload.blockType);
+      setBlocks((prev) => insertBeforeInTree(prev, targetBlockId, newBlock));
+      return;
+    }
+
+    if (payload.blockId === targetBlockId) return;
+    setBlocks((prev) => {
+      const dragged = findBlockInTree(prev, payload.blockId);
+      if (!dragged || containsId(dragged, targetBlockId)) return prev;
+      const stripped = removeBlockFromTree(prev, payload.blockId);
+      soundEngine.playBlockSnap();
+      return insertBeforeInTree(stripped, targetBlockId, dragged);
+    });
+  };
+
+  const applyExecutionFrame = (
+    frame: ExecutionFrame,
+    isLast: boolean,
+    result: ExecutionResult,
+    codeToRun: string,
+    effectiveLang: CodeLanguage
+  ) => {
+    setRobotX(frame.x);
+    setRobotY(frame.y);
+    setRobotDir(frame.dir);
+    setCollectedGems(frame.collectedGems);
+    setActiveLine(frame.activeLine);
+    setActionLabel(frame.actionLabel);
+
+    if (frame.soundEvent === 'step') soundEngine.playStep();
+    else if (frame.soundEvent === 'turn') soundEngine.playTurn();
+    else if (frame.soundEvent === 'gem') soundEngine.playGemCollect();
+    else if (frame.soundEvent === 'crash' || frame.soundEvent === 'incomplete') {
+      soundEngine.playCrash();
+    } else if (frame.soundEvent === 'success') {
+      soundEngine.playGemCollect();
+    }
+
+    if (isLast) {
+      setStatus(frame.status);
+      stepSessionRef.current = null;
+      if (result.success && result.stars > 0) {
+        const earnedStars = result.stars as 1 | 2 | 3;
+        soundEngine.playVictory(earnedStars);
+        void onLevelComplete({
+          levelId: level.id,
+          tier: level.tier,
+          stars: earnedStars,
+          codeSubmitted: codeToRun,
+          language: effectiveLang,
+        }).then(({ newCertificate }) => {
+          if (newCertificate) {
+            setTimeout(() => soundEngine.playCertificateUnlock(), 650);
+          }
+          setVictoryData({
+            stars: earnedStars,
+            lineCount: result.lineCount,
+            newCertificate,
+          });
+        });
+      } else if (result.errorMessage) {
+        setErrorMsg(result.errorMessage);
+      }
+    }
+  };
+
   const handleRun = () => {
     stopTimer();
+    stepSessionRef.current = null;
     setVictoryData(null);
     setErrorMsg(null);
     setShowTutor(false);
@@ -354,49 +611,9 @@ export const CodingStudio: React.FC<Props> = ({
     const playFrame = (index: number, frames: ExecutionFrame[]) => {
       if (index >= frames.length) return;
       const frame = frames[index];
-      setRobotX(frame.x);
-      setRobotY(frame.y);
-      setRobotDir(frame.dir);
-      setCollectedGems(frame.collectedGems);
-      setActiveLine(frame.activeLine);
-      setActionLabel(frame.actionLabel);
-
-      // Trigger synthesized sound for each step!
-      if (frame.soundEvent === 'step') soundEngine.playStep();
-      else if (frame.soundEvent === 'turn') soundEngine.playTurn();
-      else if (frame.soundEvent === 'gem') soundEngine.playGemCollect();
-      else if (frame.soundEvent === 'crash' || frame.soundEvent === 'incomplete') {
-        soundEngine.playCrash();
-      } else if (frame.soundEvent === 'success') {
-        soundEngine.playGemCollect();
-      }
-
-      if (index === frames.length - 1) {
-        setStatus(frame.status);
-        if (result.success && result.stars > 0) {
-          const earnedStars = result.stars as 1 | 2 | 3;
-          soundEngine.playVictory(earnedStars);
-          void onLevelComplete({
-            levelId: level.id,
-            tier: level.tier,
-            stars: earnedStars,
-            codeSubmitted: codeToRun,
-            language: effectiveLang,
-          }).then(({ newCertificate }) => {
-            if (newCertificate) {
-              setTimeout(() => soundEngine.playCertificateUnlock(), 650);
-            }
-            setVictoryData({
-              stars: earnedStars,
-              lineCount: result.lineCount,
-              newCertificate,
-            });
-          });
-        } else if (result.errorMessage) {
-          setErrorMsg(result.errorMessage);
-        }
-        return;
-      }
+      const isLast = index === frames.length - 1;
+      applyExecutionFrame(frame, isLast, result, codeToRun, effectiveLang);
+      if (isLast) return;
 
       timerRef.current = window.setTimeout(() => {
         playFrame(index + 1, frames);
@@ -408,11 +625,90 @@ export const CodingStudio: React.FC<Props> = ({
     }, 180);
   };
 
+  const handleStep = () => {
+    if (status === 'running') return;
+    stopTimer();
+    setShowTutor(false);
+
+    const effectiveLang: CodeLanguage =
+      activeTab === 'javascript' ? 'javascript' : activeTab === 'python' ? 'python' : textLang;
+    const codeToRun =
+      activeTab === 'blocks' ? blocksToCode(blocks, effectiveLang) : textCode;
+    const codeKey = `${level.id}::${effectiveLang}::${codeToRun}`;
+
+    if (
+      !stepSessionRef.current ||
+      stepSessionRef.current.codeKey !== codeKey ||
+      status === 'success' ||
+      status === 'crashed' ||
+      status === 'incomplete'
+    ) {
+      setVictoryData(null);
+      setErrorMsg(null);
+      setRobotX(level.start.x);
+      setRobotY(level.start.y);
+      setRobotDir(level.start.dir);
+      setCollectedGems([]);
+      const result = executeCode(codeToRun, effectiveLang, level);
+      stepSessionRef.current = {
+        codeKey,
+        result,
+        nextIndex: 0,
+        effectiveLang,
+        codeToRun,
+      };
+    }
+
+    const sess = stepSessionRef.current;
+    if (!sess || sess.nextIndex >= sess.result.frames.length) return;
+
+    const idx = sess.nextIndex;
+    const frame = sess.result.frames[idx];
+    const isLast = idx === sess.result.frames.length - 1;
+    sess.nextIndex += 1;
+
+    setStatus(isLast ? frame.status : 'idle');
+    applyExecutionFrame(frame, isLast, sess.result, sess.codeToRun, sess.effectiveLang);
+  };
+
+  const insertTextSnippet = (snippet: string) => {
+    soundEngine.playBlockSnap();
+    const el = textareaRef.current;
+    if (!el) {
+      setTextCode((prev) => (prev.trim() ? `${prev}\n${snippet}` : snippet));
+      return;
+    }
+    const start = el.selectionStart ?? textCode.length;
+    const end = el.selectionEnd ?? textCode.length;
+    const before = textCode.slice(0, start);
+    const after = textCode.slice(end);
+    const needLeadingNewline = before.length > 0 && !before.endsWith('\n');
+    const needTrailingNewline = after.length > 0 && !after.startsWith('\n');
+    const inserted = `${needLeadingNewline ? '\n' : ''}${snippet}${needTrailingNewline ? '\n' : ''}`;
+    const nextCode = before + inserted + after;
+    setTextCode(nextCode);
+    stepSessionRef.current = null;
+    window.requestAnimationFrame(() => {
+      el.focus();
+      const caret = before.length + inserted.length;
+      el.setSelectionRange(caret, caret);
+    });
+  };
+
   const renderWorkspaceBlock = (block: CodeBlockItem, depth = 0) => {
     const isContainer =
       block.type === 'repeat' || block.type === 'if_path_clear' || block.type === 'if_gem_ahead';
     const isTargetingChildren = target.kind === 'children' && target.blockId === block.id;
     const isTargetingElse = target.kind === 'else' && target.blockId === block.id;
+    const lineRange = blockLineMap.get(block.id);
+    const isActiveBlock =
+      activeLine !== null && lineRange !== undefined && activeLine === lineRange.start;
+    const isContainingActive =
+      activeLine !== null &&
+      lineRange !== undefined &&
+      activeLine > lineRange.start &&
+      activeLine <= lineRange.end;
+    const isDropTarget = dragOverId === block.id;
 
     const bgStyle: Record<BlockType, string> = {
       move_forward: 'bg-[#2B8EF2] border-[#1A65B5] text-white',
@@ -424,13 +720,40 @@ export const CodingStudio: React.FC<Props> = ({
     };
 
     return (
-      <div key={block.id} className="space-y-1" style={{ marginLeft: depth > 0 ? 10 : 0 }}>
+      <div
+        key={block.id}
+        className="space-y-1"
+        style={{ marginLeft: depth > 0 ? 10 : 0 }}
+        onDragOver={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setDragOverId(block.id);
+        }}
+        onDragLeave={() => {
+          if (dragOverId === block.id) setDragOverId(null);
+        }}
+        onDrop={(e) => handleDropOnBlock(e, block.id)}
+      >
         {/* Interlocking Codementum Puzzle Block */}
         <div
-          className={`cm-puzzle-block relative rounded-md border-2 px-2.5 py-2 flex flex-wrap items-center justify-between gap-2 shadow-[0_3px_0_rgba(0,0,0,0.22)] ${bgStyle[block.type]}`}
+          draggable
+          onDragStart={(e) => handleWorkspaceDragStart(e, block.id)}
+          className={`cm-puzzle-block relative rounded-md border-2 px-2.5 py-2 flex flex-wrap items-center justify-between gap-2 shadow-[0_3px_0_rgba(0,0,0,0.22)] transition-transform cursor-grab active:cursor-grabbing ${bgStyle[block.type]} ${
+            isActiveBlock
+              ? 'ring-[3px] ring-[#FFE600] scale-[1.02] brightness-110 z-10'
+              : isContainingActive
+                ? 'ring-2 ring-[#FFE600]/65'
+                : ''
+          } ${isDropTarget ? 'border-t-4 border-t-[#FFE600]' : ''}`}
         >
           <div className="flex items-center gap-1.5 min-w-0 font-display font-extrabold text-sm">
+            <GripVertical className="w-3.5 h-3.5 shrink-0 opacity-65" />
             {depth > 0 && <CornerDownRight className="w-3.5 h-3.5 shrink-0 opacity-85" />}
+            {isActiveBlock && (
+              <span className="px-1 py-0.5 rounded bg-[#FFE600] text-black text-[9px] font-mono font-extrabold">
+                ▶
+              </span>
+            )}
 
             {block.type === 'move_forward' && (
               <>
@@ -554,7 +877,19 @@ export const CodingStudio: React.FC<Props> = ({
 
         {/* Nested Body for repeat / if */}
         {isContainer && (
-          <div className="ml-3 pl-2.5 border-l-4 border-[#8C5A2B]/60 space-y-1.5 py-1">
+          <div
+            onDragOver={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setDragOverId(`children_${block.id}`);
+            }}
+            onDrop={(e) => handleDropOnContainer(e, { kind: 'children', blockId: block.id })}
+            className={`ml-3 pl-2.5 border-l-4 space-y-1.5 py-1 rounded-r ${
+              dragOverId === `children_${block.id}`
+                ? 'border-[#FFE600] bg-[#FFE600]/20'
+                : 'border-[#8C5A2B]/60'
+            }`}
+          >
             <div className="flex items-center justify-between gap-2">
               <span className="text-[11px] font-extrabold text-[#5C3210]">
                 {block.type === 'repeat' ? 'Ulangi perintah:' : 'Jika benar:'}
@@ -577,12 +912,22 @@ export const CodingStudio: React.FC<Props> = ({
               block.children.map((ch) => renderWorkspaceBlock(ch, depth + 1))
             ) : (
               <div className="text-[11px] italic text-[#7A5128] px-2 py-1 rounded border border-dashed border-[#8C5A2B]/50 bg-[#FFF5D6]/50">
-                Klik blok di sebelah kiri untuk menambahkan ke sini.
+                Klik atau seret blok ke sini.
               </div>
             )}
 
             {block.type === 'if_path_clear' && (
-              <div className="pt-1.5 space-y-1 border-t border-[#8C5A2B]/30">
+              <div
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setDragOverId(`else_${block.id}`);
+                }}
+                onDrop={(e) => handleDropOnContainer(e, { kind: 'else', blockId: block.id })}
+                className={`pt-1.5 space-y-1 border-t border-[#8C5A2B]/30 rounded ${
+                  dragOverId === `else_${block.id}` ? 'bg-[#FFE600]/20' : ''
+                }`}
+              >
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-[11px] font-mono font-extrabold text-[#5C3210]">
                     else: (jika terhalang)
@@ -604,7 +949,7 @@ export const CodingStudio: React.FC<Props> = ({
                   block.elseChildren.map((ch) => renderWorkspaceBlock(ch, depth + 1))
                 ) : (
                   <div className="text-[11px] italic text-[#7A5128] px-2 py-1 rounded border border-dashed border-[#8C5A2B]/50 bg-[#FFF5D6]/50">
-                    Opsional: klik "+ Isi Else" lalu pilih blok turn.
+                    Opsional: seret atau klik "+ Isi Else" lalu pilih blok turn.
                   </div>
                 )}
               </div>
@@ -631,6 +976,7 @@ export const CodingStudio: React.FC<Props> = ({
           speed={speed}
           onChangeSpeed={setSpeed}
           onRun={handleRun}
+          onStep={handleStep}
           onReset={resetArena}
           canGoPrev={Boolean(prevLevel)}
           canGoNext={Boolean(nextLevel) && (canGoNext || (isTrialStudent && level.order === 1))}
@@ -705,8 +1051,23 @@ export const CodingStudio: React.FC<Props> = ({
               })}
             </div>
 
-            {/* Modul Singkat & Golden Menu Buttons on Right of Wooden Header */}
+            {/* Media Belajar, Modul Singkat & Golden Menu Buttons on Right of Wooden Header */}
             <div className="relative pb-1.5 shrink-0 flex items-center gap-1.5">
+              {onOpenMedia && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    soundEngine.playButtonClick();
+                    onOpenMedia(level.tier);
+                  }}
+                  className="h-9 px-2.5 rounded bg-gradient-to-b from-[#38BDF8] to-[#0284C7] border-2 border-[#0C4A6E] flex items-center gap-1 text-white text-xs font-extrabold shadow cursor-pointer"
+                  title="Buka Slide Konsep, Lab Mini & Kuis Interaktif"
+                >
+                  <Presentation className="w-4 h-4 shrink-0" />
+                  <span className="hidden xl:inline">Media</span>
+                </button>
+              )}
+
               {onOpenModule && (
                 <button
                   type="button"
@@ -735,7 +1096,20 @@ export const CodingStudio: React.FC<Props> = ({
               </button>
 
               {menuOpen && (
-                <div className="absolute right-0 top-11 z-30 w-56 rounded-md border-2 border-[#5C2A0E] bg-[#FFF5D6] shadow-lg p-2 space-y-1 text-xs font-bold text-[#3A1E08]">
+                <div className="absolute right-0 top-11 z-30 w-60 rounded-md border-2 border-[#5C2A0E] bg-[#FFF5D6] shadow-lg p-2 space-y-1 text-xs font-bold text-[#3A1E08]">
+                  {onOpenMedia && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMenuOpen(false);
+                        onOpenMedia(level.tier);
+                      }}
+                      className="w-full text-left px-2.5 py-2 rounded hover:bg-[#BAE6FD] cursor-pointer flex items-center gap-1.5"
+                    >
+                      <Presentation className="w-3.5 h-3.5" />
+                      Slide &amp; Kuis Interaktif ({level.tierLabel})
+                    </button>
+                  )}
                   {onOpenModule && (
                     <button
                       type="button"
@@ -795,7 +1169,11 @@ export const CodingStudio: React.FC<Props> = ({
                   </div>
 
                   {/* Blue forward(n) block */}
-                  <div className="rounded-md bg-[#2B8EF2] border-2 border-[#1A65B5] shadow-[0_3px_0_rgba(0,0,0,0.22)] p-2 text-white">
+                  <div
+                    draggable
+                    onDragStart={(e) => handleToolboxDragStart(e, 'move_forward')}
+                    className="rounded-md bg-[#2B8EF2] border-2 border-[#1A65B5] shadow-[0_3px_0_rgba(0,0,0,0.22)] p-2 text-white cursor-grab active:cursor-grabbing"
+                  >
                     <div className="flex items-center justify-between gap-1">
                       <button
                         type="button"
@@ -822,7 +1200,16 @@ export const CodingStudio: React.FC<Props> = ({
                   </div>
 
                   {/* Gold turn(left|right) block */}
-                  <div className="rounded-md bg-[#F3C043] border-2 border-[#BD8D1B] shadow-[0_3px_0_rgba(0,0,0,0.22)] p-2 text-[#3B2305]">
+                  <div
+                    draggable
+                    onDragStart={(e) =>
+                      handleToolboxDragStart(
+                        e,
+                        toolboxTurnDir === 'left' ? 'turn_left' : 'turn_right'
+                      )
+                    }
+                    className="rounded-md bg-[#F3C043] border-2 border-[#BD8D1B] shadow-[0_3px_0_rgba(0,0,0,0.22)] p-2 text-[#3B2305] cursor-grab active:cursor-grabbing"
+                  >
                     <div className="flex items-center justify-between gap-1">
                       <button
                         type="button"
@@ -847,7 +1234,11 @@ export const CodingStudio: React.FC<Props> = ({
                   </div>
 
                   {/* Purple repeat(n) block */}
-                  <div className="rounded-md bg-[#9353D3] border-2 border-[#662D9F] shadow-[0_3px_0_rgba(0,0,0,0.22)] p-2 text-white">
+                  <div
+                    draggable
+                    onDragStart={(e) => handleToolboxDragStart(e, 'repeat')}
+                    className="rounded-md bg-[#9353D3] border-2 border-[#662D9F] shadow-[0_3px_0_rgba(0,0,0,0.22)] p-2 text-white cursor-grab active:cursor-grabbing"
+                  >
                     <div className="flex items-center justify-between gap-1">
                       <button
                         type="button"
@@ -876,8 +1267,10 @@ export const CodingStudio: React.FC<Props> = ({
                   {/* Teal if path_clear block */}
                   <button
                     type="button"
+                    draggable
+                    onDragStart={(e) => handleToolboxDragStart(e, 'if_path_clear')}
                     onClick={() => handleAddBlock('if_path_clear')}
-                    className="w-full rounded-md bg-[#1EA896] border-2 border-[#117366] shadow-[0_3px_0_rgba(0,0,0,0.22)] p-2 text-white font-display font-extrabold text-xs sm:text-sm flex items-center gap-1.5 cursor-pointer text-left"
+                    className="w-full rounded-md bg-[#1EA896] border-2 border-[#117366] shadow-[0_3px_0_rgba(0,0,0,0.22)] p-2 text-white font-display font-extrabold text-xs sm:text-sm flex items-center gap-1.5 cursor-grab active:cursor-grabbing text-left"
                   >
                     <GitBranch className="w-3.5 h-3.5 shrink-0" />
                     <span className="truncate">if path_clear</span>
@@ -886,15 +1279,21 @@ export const CodingStudio: React.FC<Props> = ({
                   {/* Coral if gem_ahead block */}
                   <button
                     type="button"
+                    draggable
+                    onDragStart={(e) => handleToolboxDragStart(e, 'if_gem_ahead')}
                     onClick={() => handleAddBlock('if_gem_ahead')}
-                    className="w-full rounded-md bg-[#E95B7A] border-2 border-[#B22F4C] shadow-[0_3px_0_rgba(0,0,0,0.22)] p-2 text-white font-display font-extrabold text-xs sm:text-sm flex items-center gap-1.5 cursor-pointer text-left"
+                    className="w-full rounded-md bg-[#E95B7A] border-2 border-[#B22F4C] shadow-[0_3px_0_rgba(0,0,0,0.22)] p-2 text-white font-display font-extrabold text-xs sm:text-sm flex items-center gap-1.5 cursor-grab active:cursor-grabbing text-left"
                   >
                     <Gem className="w-3.5 h-3.5 shrink-0" />
                     <span className="truncate">if gem_ahead</span>
                   </button>
 
+                  <div className="text-[10px] font-bold text-[#7A5128] leading-snug">
+                    Klik atau seret blok ke area START di kanan.
+                  </div>
+
                   {/* Compact Live Sync Preview */}
-                  <div className="pt-2">
+                  <div className="pt-1">
                     <div className="rounded border border-[#8C5A2B]/60 bg-[#2A231D] text-[#FDE68A] p-2 font-mono text-[11px] leading-relaxed overflow-x-auto">
                       <div className="text-[10px] text-[#94A3B8] mb-1 flex items-center justify-between">
                         <span>Live {textLang === 'python' ? 'Python' : 'JS'}</span>
@@ -914,7 +1313,19 @@ export const CodingStudio: React.FC<Props> = ({
                 </div>
 
                 {/* RIGHT COLUMN: START CAP & SNAPPED PROGRAM STACK */}
-                <div className="col-span-7 p-2.5 sm:p-3 flex flex-col overflow-y-auto">
+                <div
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    setDragOverId('root_drop');
+                  }}
+                  onDragLeave={() => {
+                    if (dragOverId === 'root_drop') setDragOverId(null);
+                  }}
+                  onDrop={(e) => handleDropOnContainer(e, { kind: 'root' })}
+                  className={`col-span-7 p-2.5 sm:p-3 flex flex-col overflow-y-auto transition-colors ${
+                    dragOverId === 'root_drop' ? 'bg-[#FFE600]/15' : ''
+                  }`}
+                >
                   <div className="flex items-center justify-between gap-2 mb-2">
                     <span className="text-[11px] font-extrabold text-[#6E441E]">
                       {target.kind === 'root' ? 'Program Utama' : 'Target: Dalam Blok'}
@@ -949,7 +1360,7 @@ export const CodingStudio: React.FC<Props> = ({
 
                   {blocks.length === 0 ? (
                     <div className="mt-1 p-4 rounded border-2 border-dashed border-[#8C5A2B]/45 bg-[#FFF7DF]/55 text-xs font-bold text-[#7A5128] text-center">
-                      Klik blok di sebelah kiri (mis. <code>forward</code>) untuk memasangnya di bawah START!
+                      Klik atau seret blok dari kiri (mis. <code>forward</code>) ke bawah START!
                     </div>
                   ) : (
                     <div className="space-y-1.5">{blocks.map((b) => renderWorkspaceBlock(b, 0))}</div>
@@ -963,8 +1374,14 @@ export const CodingStudio: React.FC<Props> = ({
                   <span>
                     Mode Teks: {activeTab === 'python' ? 'Python (.py)' : 'JavaScript (.js)'}
                   </span>
-                  <span className="font-mono text-[11px] text-[#7A5128]">
-                    Target 3★: ≤ {level.optimalLines} baris
+                  <span
+                    className={`font-mono text-[11px] tabular-nums ${
+                      liveEffectiveLines > 0 && liveEffectiveLines <= level.optimalLines
+                        ? 'text-emerald-800'
+                        : 'text-[#7A5128]'
+                    }`}
+                  >
+                    Baris: {liveEffectiveLines} · Target 3★ ≤ {level.optimalLines}
                   </span>
                 </div>
 
@@ -982,8 +1399,12 @@ export const CodingStudio: React.FC<Props> = ({
                     ))}
                   </div>
                   <textarea
+                    ref={textareaRef}
                     value={textCode}
-                    onChange={(e) => setTextCode(e.target.value)}
+                    onChange={(e) => {
+                      setTextCode(e.target.value);
+                      stepSessionRef.current = null;
+                    }}
                     spellCheck={false}
                     aria-label="Editor kode Python atau JavaScript"
                     className="w-full h-full p-3 bg-[#1E1F26] text-[#7CE38B] font-mono text-sm leading-6 focus:outline-none resize-none"
@@ -995,35 +1416,51 @@ export const CodingStudio: React.FC<Props> = ({
                   />
                 </div>
 
-                {/* Quick-Insert Command Chips */}
-                <div className="flex flex-wrap gap-1.5">
-                  {(activeTab === 'python'
-                    ? ['forward(1)', 'turn("left")', 'turn("right")', 'for i in range(3):\n  forward(1)', 'if path_clear():\n  forward(1)\nelse:\n  turn("left")']
-                    : ['forward(1);', 'turn("left");', 'turn("right");', 'for (let i = 0; i < 3; i++) {\n  forward(1);\n}', 'if (pathClear()) {\n  forward(1);\n} else {\n  turn("left");\n}']
-                  ).map((snippet) => (
-                    <button
-                      key={snippet}
-                      type="button"
-                      onClick={() => {
-                        soundEngine.playBlockSnap();
-                        setTextCode((prev) => (prev.trim() ? `${prev}\n${snippet}` : snippet));
-                      }}
-                      className="px-2 py-1 rounded bg-[#FFF5D6] hover:bg-[#FFE600] border border-[#7C4A22] font-mono text-[11px] font-bold text-[#3A1E08] cursor-pointer"
-                    >
-                      + {snippet.split('\n')[0]}
-                    </button>
-                  ))}
+                {/* Codementum Cursor-Aware Quick Command Dock */}
+                <div className="space-y-1">
+                  <div className="text-[10px] font-extrabold uppercase tracking-wide text-[#7A5128]">
+                    Dok Perintah Cepat (Sisipkan di Posisi Kursor)
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {(activeTab === 'python'
+                      ? [
+                          'forward(1)',
+                          'forward(3)',
+                          'turn("left")',
+                          'turn("right")',
+                          'for i in range(3):\n  forward(1)',
+                          'if path_clear():\n  forward(1)\nelse:\n  turn("left")',
+                        ]
+                      : [
+                          'forward(1);',
+                          'forward(3);',
+                          'turn("left");',
+                          'turn("right");',
+                          'for (let i = 0; i < 3; i++) {\n  forward(1);\n}',
+                          'if (pathClear()) {\n  forward(1);\n} else {\n  turn("left");\n}',
+                        ]
+                    ).map((snippet) => (
+                      <button
+                        key={snippet}
+                        type="button"
+                        onClick={() => insertTextSnippet(snippet)}
+                        className="px-2 py-1 rounded bg-[#FFF5D6] hover:bg-[#FFE600] border border-[#7C4A22] font-mono text-[11px] font-bold text-[#3A1E08] cursor-pointer"
+                      >
+                        + {snippet.split('\n')[0]}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
             )}
 
             {/* Bottom Info Bar inside Parchment */}
-            <div className="px-3 py-2 border-t border-[#8C5A2B]/35 bg-[#E6C776]/70 flex items-center justify-between text-[11px] font-extrabold text-[#5C3210]">
-              <span>
-                Tingkat {level.tierLabel} · Level {level.order} · {stageCharacter.name}
+            <div className="px-3 py-2 border-t border-[#8C5A2B]/35 bg-[#E6C776]/70 flex flex-wrap items-center justify-between gap-2 text-[11px] font-extrabold text-[#5C3210]">
+              <span className="tabular-nums">
+                {level.tierLabel} · L{level.order} ({stageCharacter.name}) · Baris: {liveEffectiveLines}/{level.optimalLines} (3★)
               </span>
               <div className="flex items-center gap-1">
-                <span>Skor Terbaik:</span>
+                <span>Terbaik:</span>
                 {[1, 2, 3].map((s) => (
                   <Star
                     key={s}

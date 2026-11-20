@@ -33,6 +33,7 @@ import {
   Layers,
   Lock,
   Cpu,
+  Presentation,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -71,6 +72,7 @@ import { LEVELS, TIERS, getLevelById, getLevelsByTier, getTierMeta } from '../da
 import { APP_MAKER_PROJECTS } from '../data/appMakerProjects';
 import { GAME_MAKER_PROJECTS } from '../data/gameMakerProjects';
 import { AI_ML_PROJECTS } from '../data/aiMlProjects';
+import type { MediaUnitId } from '../data/learningMedia';
 import { blocksToCode } from '../engine/interpreter';
 import { soundEngine } from '../engine/soundEngine';
 import { formatShortDate, formatWhatsAppUrl, generateAccessCode } from '../utils/crypto';
@@ -79,6 +81,7 @@ import { CodingStudio } from './CodingStudio';
 import { AppMakerWorkspace } from './AppMakerWorkspace';
 import { GameMakerWorkspace } from './GameMakerWorkspace';
 import { AiMlWorkspace } from './AiMlWorkspace';
+import { LearningMediaHub } from './LearningMediaHub';
 import { ModuleGuideModal } from './ModuleGuideModal';
 
 interface Props {
@@ -139,11 +142,12 @@ export const AdminDashboard: React.FC<Props> = ({ session, store, onLogout }) =>
   const [previewCert, setPreviewCert] = useState<CertificateRecord | null>(null);
   const [moduleModalTier, setModuleModalTier] = useState<TierId | null>(null);
 
-  // Admin Full Materials & Unlocked Studio/App Maker/Game Maker/AI-ML Preview State
+  // Admin Full Materials & Unlocked Studio/Media/App Maker/Game Maker/AI-ML Preview State
   const [previewView, setPreviewView] = useState<
-    'materials' | 'studio' | 'app_maker' | 'game_maker' | 'ai_ml'
+    'materials' | 'studio' | 'media' | 'app_maker' | 'game_maker' | 'ai_ml'
   >('materials');
   const [previewLevelId, setPreviewLevelId] = useState<string>('p1');
+  const [previewMediaUnit, setPreviewMediaUnit] = useState<MediaUnitId>('pemula');
   const [previewAppProjectId, setPreviewAppProjectId] = useState<AppMakerProjectId | null>(null);
   const [previewGameProjectId, setPreviewGameProjectId] = useState<GameMakerProjectId | null>(null);
   const [previewAiMlProjectId, setPreviewAiMlProjectId] = useState<AiMlProjectId | null>(null);
@@ -232,6 +236,14 @@ export const AdminDashboard: React.FC<Props> = ({ session, store, onLogout }) =>
     setPreviewAiMlProjectId(projectId);
     setActiveTab('preview');
     setPreviewView('ai_ml');
+    setDrawerOpen(false);
+  };
+
+  const openMediaInPreview = (unit: MediaUnitId = 'pemula') => {
+    soundEngine.playButtonClick();
+    setPreviewMediaUnit(unit);
+    setActiveTab('preview');
+    setPreviewView('media');
     setDrawerOpen(false);
   };
 
@@ -629,6 +641,7 @@ export const AdminDashboard: React.FC<Props> = ({ session, store, onLogout }) =>
             onSelectLevel={(id) => setPreviewLevelId(id)}
             onOpenCertificates={() => openSampleCertificate(previewLevel.tier)}
             onOpenModule={(tier) => setModuleModalTier(tier)}
+            onOpenMedia={(tier) => openMediaInPreview(tier)}
             onLevelComplete={async ({ levelId, stars }) => {
               setPreviewStars((prev) => ({
                 ...prev,
@@ -1746,6 +1759,45 @@ export const AdminDashboard: React.FC<Props> = ({ session, store, onLogout }) =>
             </div>
           )}
 
+          {/* ADMIN UNLOCKED INTERACTIVE LEARNING MEDIA PREVIEW VIEW */}
+          {activeTab === 'preview' && previewView === 'media' && (
+            <div className="space-y-4">
+              <div className="neo-card bg-[#FFE600]/45 p-4 flex flex-wrap items-center justify-between gap-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      soundEngine.playButtonClick();
+                      setPreviewView('materials');
+                    }}
+                    className="neo-btn bg-white px-3.5 py-2 text-xs font-extrabold inline-flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <ArrowLeft className="w-4 h-4" />
+                    Kembali ke Semua Materi
+                  </button>
+                  <span className="text-xs font-extrabold px-2.5 py-1 bg-[#FFE600] border-2 border-black">
+                    Pratinjau Admin · Pusat Media Belajar Interaktif (6 Unit Terbuka)
+                  </span>
+                </div>
+              </div>
+
+              <LearningMediaHub
+                initialUnit={previewMediaUnit}
+                isAdminPreview={true}
+                onOpenPrintableModule={(tier) => setModuleModalTier(tier)}
+                onLaunchUnit={(unit) => {
+                  if (unit === 'app_maker') openAppMakerInPreview(null);
+                  else if (unit === 'game_maker') openGameMakerInPreview(null);
+                  else if (unit === 'ai_ml') openAiMlInPreview(null);
+                  else {
+                    const firstLvl = getLevelsByTier(unit)[0];
+                    if (firstLvl) openLevelInPreviewStudio(firstLvl.id);
+                  }
+                }}
+              />
+            </div>
+          )}
+
           {/* ADMIN UNLOCKED APP MAKER PREVIEW VIEW */}
           {activeTab === 'preview' && previewView === 'app_maker' && (
             <div className="space-y-4">
@@ -1932,6 +1984,14 @@ export const AdminDashboard: React.FC<Props> = ({ session, store, onLogout }) =>
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => openMediaInPreview('pemula')}
+                    className="neo-btn bg-white px-3.5 py-2.5 text-xs font-extrabold inline-flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <Presentation className="w-3.5 h-3.5" />
+                    Media Belajar (6)
+                  </button>
                   <button
                     type="button"
                     onClick={() => openLevelInPreviewStudio(previewLevelId)}
@@ -2169,6 +2229,14 @@ export const AdminDashboard: React.FC<Props> = ({ session, store, onLogout }) =>
                           <div className="flex flex-wrap items-center gap-2">
                             <button
                               type="button"
+                              onClick={() => openMediaInPreview(tier.id)}
+                              className="neo-btn bg-[#FFE600] px-3.5 py-2 text-xs font-extrabold inline-flex items-center gap-1.5 cursor-pointer"
+                            >
+                              <Presentation className="w-4 h-4" />
+                              Slide &amp; Kuis {tier.shortName}
+                            </button>
+                            <button
+                              type="button"
                               onClick={() => {
                                 soundEngine.playButtonClick();
                                 setModuleModalTier(tier.id);
@@ -2181,7 +2249,7 @@ export const AdminDashboard: React.FC<Props> = ({ session, store, onLogout }) =>
                             <button
                               type="button"
                               onClick={() => openSampleCertificate(tier.id)}
-                              className="neo-btn bg-[#FFE600] px-3.5 py-2 text-xs font-extrabold inline-flex items-center gap-1.5 cursor-pointer"
+                              className="neo-btn bg-[#4ADE80] px-3.5 py-2 text-xs font-extrabold inline-flex items-center gap-1.5 cursor-pointer"
                             >
                               <Award className="w-4 h-4" />
                               Pratinjau Sertifikat {tier.shortName}

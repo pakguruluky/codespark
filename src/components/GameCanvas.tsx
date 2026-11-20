@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Play,
+  StepForward,
   RotateCcw,
   Settings,
   ChevronLeft,
@@ -13,6 +14,7 @@ import {
   Music,
   AlertTriangle,
   CheckCircle2,
+  Ruler,
   X,
 } from 'lucide-react';
 import type { Direction, LevelDefinition } from '../types';
@@ -38,6 +40,7 @@ interface Props {
   speed: PlaybackSpeed;
   onChangeSpeed: (s: PlaybackSpeed) => void;
   onRun: () => void;
+  onStep?: () => void;
   onReset: () => void;
   canGoPrev: boolean;
   canGoNext: boolean;
@@ -87,6 +90,7 @@ export const GameCanvas: React.FC<Props> = ({
   speed,
   onChangeSpeed,
   onRun,
+  onStep,
   onReset,
   canGoPrev,
   canGoNext,
@@ -102,6 +106,44 @@ export const GameCanvas: React.FC<Props> = ({
   onToggleBgm,
 }) => {
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [rulerMode, setRulerMode] = useState(false);
+  const [hoveredTile, setHoveredTile] = useState<{ gx: number; gy: number } | null>(null);
+  const [pinnedTile, setPinnedTile] = useState<{ gx: number; gy: number } | null>(null);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+
+  const stopSpeech = () => {
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+    }
+    setIsSpeaking(false);
+  };
+
+  useEffect(() => {
+    setHoveredTile(null);
+    setPinnedTile(null);
+    stopSpeech();
+  }, [level.id]);
+
+  useEffect(() => {
+    return () => stopSpeech();
+  }, []);
+
+  const handleToggleSpeech = (text: string) => {
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+    soundEngine.playButtonClick();
+    if (isSpeaking) {
+      stopSpeech();
+      return;
+    }
+    window.speechSynthesis.cancel();
+    const utter = new SpeechSynthesisUtterance(text);
+    utter.lang = 'id-ID';
+    utter.rate = 0.96;
+    utter.onend = () => setIsSpeaking(false);
+    utter.onerror = () => setIsSpeaking(false);
+    setIsSpeaking(true);
+    window.speechSynthesis.speak(utter);
+  };
 
   const characterId = getCharacterForLevel(level.order);
   const character = CHARACTER_META[characterId];
@@ -375,6 +417,25 @@ export const GameCanvas: React.FC<Props> = ({
             <Play className="w-7 h-7 text-white fill-white drop-shadow" />
           </button>
 
+          {/* Step-by-Step Debugger Button (Codementum Step Execution) */}
+          {onStep && (
+            <button
+              type="button"
+              onClick={() => {
+                soundEngine.playButtonClick();
+                onStep();
+              }}
+              disabled={status === 'running'}
+              className="cm-arcade-btn bg-gradient-to-b from-[#B77CFF] to-[#7C3AED] w-12 h-12 sm:w-14 sm:h-14 relative flex items-center justify-center cursor-pointer disabled:opacity-60"
+              title="Jalankan 1 Langkah (Step-by-Step Debugger)"
+            >
+              <span className="absolute -top-1 -left-1 px-1 py-0.5 text-[9px] font-mono font-bold bg-black/75 text-white rounded">
+                1×
+              </span>
+              <StepForward className="w-6 h-6 text-white drop-shadow" strokeWidth={2.6} />
+            </button>
+          )}
+
           {/* Reset Button */}
           <button
             type="button"
@@ -524,6 +585,29 @@ export const GameCanvas: React.FC<Props> = ({
             <span>{character.name}</span>
           </div>
 
+          {/* Codementum Signature Distance Ruler Toggle */}
+          <button
+            type="button"
+            onClick={() => {
+              soundEngine.playButtonClick();
+              setRulerMode((v) => {
+                if (v) {
+                  setHoveredTile(null);
+                  setPinnedTile(null);
+                }
+                return !v;
+              });
+            }}
+            className={`cm-arcade-btn w-11 h-11 sm:w-12 sm:h-12 relative flex items-center justify-center cursor-pointer ${
+              rulerMode
+                ? 'bg-gradient-to-b from-[#4ADE80] to-[#16A34A] ring-2 ring-[#FFE600]'
+                : 'bg-gradient-to-b from-[#94A3B8] to-[#475569]'
+            }`}
+            title="Penggaris Jarak — Ukur jumlah langkah antar petak di pulau"
+          >
+            <Ruler className="w-5 h-5 text-white" strokeWidth={2.6} />
+          </button>
+
           {/* 3 Floating Right-Edge Icon Buttons matching Codementum */}
           <button
             type="button"
@@ -565,6 +649,14 @@ export const GameCanvas: React.FC<Props> = ({
           </button>
         </div>
       </div>
+
+      {/* Ruler Active Guidance Strip */}
+      {rulerMode && (
+        <div className="relative z-20 mx-auto -mt-2 mb-1 px-3 py-1 rounded bg-black/75 border border-[#FFE600] text-[#FFE600] text-[11px] font-bold flex items-center gap-2 shadow">
+          <Ruler className="w-3.5 h-3.5 shrink-0" />
+          <span>Penggaris Aktif: Arahkan kursor atau klik petak batu untuk mengukur langkah!</span>
+        </div>
+      )}
 
       {/* CENTER ISOMETRIC 2D FOREST ISLAND */}
       <div className="relative z-10 flex-1 flex items-center justify-center px-2 -mt-10 sm:-mt-14">
@@ -647,8 +739,28 @@ export const GameCanvas: React.FC<Props> = ({
                 );
               }
 
+              const isMeasured =
+                rulerMode &&
+                ((hoveredTile && hoveredTile.gx === gx && hoveredTile.gy === gy) ||
+                  (!hoveredTile && pinnedTile && pinnedTile.gx === gx && pinnedTile.gy === gy));
+
               return (
-                <g key={key}>
+                <g
+                  key={key}
+                  onMouseEnter={() => {
+                    if (rulerMode) setHoveredTile({ gx, gy });
+                  }}
+                  onMouseLeave={() => {
+                    if (rulerMode) setHoveredTile(null);
+                  }}
+                  onClick={() => {
+                    if (rulerMode) {
+                      soundEngine.playButtonClick();
+                      setPinnedTile({ gx, gy });
+                    }
+                  }}
+                  className={rulerMode ? 'cursor-crosshair' : undefined}
+                >
                   {/* 3D Stone Slab Thickness */}
                   <polygon
                     points={`${c.ix - hw},${c.iy} ${c.ix},${c.iy + hh} ${c.ix},${c.iy + hh + 6} ${c.ix - hw},${c.iy + 6}`}
@@ -665,9 +777,9 @@ export const GameCanvas: React.FC<Props> = ({
                   {/* Top Stone Surface */}
                   <polygon
                     points={topPts}
-                    fill={isGoal ? '#FEF08A' : 'url(#stoneTopGrad)'}
-                    stroke={isGoal ? '#B45309' : '#94A3B8'}
-                    strokeWidth="1.6"
+                    fill={isMeasured ? '#BAE6FD' : isGoal ? '#FEF08A' : 'url(#stoneTopGrad)'}
+                    stroke={isMeasured ? '#0284C7' : isGoal ? '#B45309' : '#94A3B8'}
+                    strokeWidth={isMeasured ? '2.6' : '1.6'}
                   />
                   {/* Subtle stone tile seam */}
                   <line
@@ -683,8 +795,64 @@ export const GameCanvas: React.FC<Props> = ({
             })
           )}
 
-          {/* Depth-sorted 3D objects: Hut, Trees, Boulders, Orbs, Goal, Panda */}
+          {/* Depth-sorted 3D objects: Hut, Trees, Boulders, Orbs, Goal, Mascot */}
           {entities.map((e) => e.render())}
+
+          {/* Codementum Distance Ruler Measurement Overlay */}
+          {rulerMode &&
+            (() => {
+              const targetTile = hoveredTile || pinnedTile;
+              if (!targetTile) return null;
+              const dx = Math.abs(targetTile.gx - robotX);
+              const dy = Math.abs(targetTile.gy - robotY);
+              const totalSteps = dx + dy;
+              if (totalSteps === 0) return null;
+              const targetPos = toIso(targetTile.gx, targetTile.gy);
+              const midX = (mascotPos.ix + targetPos.ix) / 2;
+              const midY = (mascotPos.iy + targetPos.iy) / 2 - 14;
+              const label =
+                dx === 0 || dy === 0
+                  ? `${totalSteps} langkah`
+                  : `${totalSteps} langkah (${dx}↔ + ${dy}↕)`;
+              const pillW = Math.max(84, label.length * 7.2);
+              return (
+                <g className="pointer-events-none">
+                  <line
+                    x1={mascotPos.ix}
+                    y1={mascotPos.iy - 4}
+                    x2={targetPos.ix}
+                    y2={targetPos.iy - 4}
+                    stroke="#FFE600"
+                    strokeWidth="3.5"
+                    strokeDasharray="6 4"
+                    strokeLinecap="round"
+                  />
+                  <circle cx={mascotPos.ix} cy={mascotPos.iy - 4} r="5" fill="#4ADE80" stroke="#000" strokeWidth="1.8" />
+                  <circle cx={targetPos.ix} cy={targetPos.iy - 4} r="5.5" fill="#FFE600" stroke="#000" strokeWidth="1.8" />
+                  <rect
+                    x={midX - pillW / 2}
+                    y={midY - 13}
+                    width={pillW}
+                    height="24"
+                    rx="6"
+                    fill="#111827"
+                    stroke="#FFE600"
+                    strokeWidth="2"
+                  />
+                  <text
+                    x={midX}
+                    y={midY + 3}
+                    textAnchor="middle"
+                    fill="#FFE600"
+                    fontSize="11.5"
+                    fontWeight="800"
+                    fontFamily="JetBrains Mono, monospace"
+                  >
+                    {label}
+                  </text>
+                </g>
+              );
+            })()}
         </svg>
       </div>
 
@@ -742,16 +910,36 @@ export const GameCanvas: React.FC<Props> = ({
                 <strong>Petunjuk:</strong> {renderHighlightedCopy(level.hint)}
               </p>
             </div>
-            <button
-              type="button"
-              onClick={() => {
-                soundEngine.playButtonClick();
-                onToggleTutor();
-              }}
-              className="cm-green-ok px-7 py-2.5 text-sm font-extrabold text-white cursor-pointer shrink-0 self-center sm:self-end"
-            >
-              OK
-            </button>
+            <div className="flex items-center gap-2 shrink-0 self-center sm:self-end">
+              <button
+                type="button"
+                onClick={() =>
+                  handleToggleSpeech(
+                    `Level ${level.order}, ${level.title}. ${level.mission}. Petunjuk: ${level.hint}`
+                  )
+                }
+                className={`px-3 py-2.5 rounded-md border-2 border-[#4A2508] text-xs font-extrabold inline-flex items-center gap-1.5 cursor-pointer shadow ${
+                  isSpeaking
+                    ? 'bg-[#FFE600] text-[#3A1E08]'
+                    : 'bg-[#F5E3B3] hover:bg-[#FFE600] text-[#3A1E08]'
+                }`}
+                title="Bacakan panduan misi dalam Bahasa Indonesia"
+              >
+                {isSpeaking ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+                <span>{isSpeaking ? 'Berhenti' : 'Bacakan'}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  soundEngine.playButtonClick();
+                  stopSpeech();
+                  onToggleTutor();
+                }}
+                className="cm-green-ok px-7 py-2.5 text-sm font-extrabold text-white cursor-pointer"
+              >
+                OK
+              </button>
+            </div>
           </div>
         ) : (
           /* Compact Status Strip when Tutor box is dismissed */

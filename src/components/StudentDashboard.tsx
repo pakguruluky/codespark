@@ -24,6 +24,7 @@ import {
   Layers,
   Gamepad2,
   Cpu,
+  Presentation,
 } from 'lucide-react';
 import type {
   AiMlProjectId,
@@ -40,6 +41,7 @@ import { LEVELS, TIERS, getLevelById, getLevelsByTier, getTierMeta } from '../da
 import { APP_MAKER_PROJECTS } from '../data/appMakerProjects';
 import { GAME_MAKER_PROJECTS } from '../data/gameMakerProjects';
 import { AI_ML_PROJECTS } from '../data/aiMlProjects';
+import type { MediaUnitId } from '../data/learningMedia';
 import {
   dataEngine,
   hasStudentAiMlAccess,
@@ -52,6 +54,7 @@ import { CodingStudio } from './CodingStudio';
 import { AppMakerWorkspace } from './AppMakerWorkspace';
 import { GameMakerWorkspace } from './GameMakerWorkspace';
 import { AiMlWorkspace } from './AiMlWorkspace';
+import { LearningMediaHub } from './LearningMediaHub';
 import { CertificateView } from './CertificateView';
 import { ModuleGuideModal } from './ModuleGuideModal';
 import { CHARACTER_META, MascotPortrait, getCharacterForLevel } from './PandaMascot';
@@ -64,7 +67,7 @@ interface Props {
   onUpdateSession?: (nextSession: AppSession) => void;
 }
 
-type StudentTab = 'studio' | 'map' | 'app_maker' | 'game_maker' | 'ai_ml' | 'certificates';
+type StudentTab = 'studio' | 'map' | 'media' | 'app_maker' | 'game_maker' | 'ai_ml' | 'certificates';
 
 export const StudentDashboard: React.FC<Props> = ({
   session,
@@ -75,6 +78,7 @@ export const StudentDashboard: React.FC<Props> = ({
   // Start directly inside the Codementum-style Coding Studio for instant play!
   const [activeTab, setActiveTab] = useState<StudentTab>('studio');
   const [selectedLevelId, setSelectedLevelId] = useState<string>('p1');
+  const [mediaInitialUnit, setMediaInitialUnit] = useState<MediaUnitId>('pemula');
   const [previewCert, setPreviewCert] = useState<CertificateRecord | null>(null);
   const [moduleModalTier, setModuleModalTier] = useState<TierId | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -157,6 +161,37 @@ export const StudentDashboard: React.FC<Props> = ({
     setSelectedLevelId(levelId);
     setActiveTab('studio');
     setDrawerOpen(false);
+  };
+
+  const openMediaUnit = (unit: MediaUnitId) => {
+    soundEngine.playButtonClick();
+    setMediaInitialUnit(unit);
+    setActiveTab('media');
+    setDrawerOpen(false);
+  };
+
+  const handleLaunchFromMedia = (unit: MediaUnitId) => {
+    soundEngine.playButtonClick();
+    if (unit === 'app_maker') {
+      setActiveTab('app_maker');
+      return;
+    }
+    if (unit === 'game_maker') {
+      setActiveTab('game_maker');
+      return;
+    }
+    if (unit === 'ai_ml') {
+      setActiveTab('ai_ml');
+      return;
+    }
+    const tierLevels = getLevelsByTier(unit);
+    const nextUnlocked =
+      tierLevels.find((l) => isLevelUnlocked(l.order) && !progressByLevel.has(l.id)) ||
+      tierLevels.find((l) => isLevelUnlocked(l.order)) ||
+      tierLevels[0];
+    if (nextUnlocked) {
+      handleOpenLevel(nextUnlocked.id);
+    }
   };
 
   const handleUpgradeSubmit = async (e: React.FormEvent) => {
@@ -266,6 +301,7 @@ export const StudentDashboard: React.FC<Props> = ({
   const navItems: { id: StudentTab; label: string; icon: typeof MapIcon }[] = [
     { id: 'studio', label: 'Studio', icon: Code2 },
     { id: 'map', label: 'Peta', icon: MapIcon },
+    { id: 'media', label: 'Media', icon: Presentation },
     {
       id: 'app_maker',
       label: hasAppMaker
@@ -289,6 +325,8 @@ export const StudentDashboard: React.FC<Props> = ({
     },
     { id: 'certificates', label: `Sertif (${myCertificates.length})`, icon: Award },
   ];
+
+  const mobileBottomNavItems = navItems.filter((item) => item.id !== 'certificates');
 
   const isStudioMode = activeTab === 'studio';
 
@@ -343,7 +381,7 @@ export const StudentDashboard: React.FC<Props> = ({
                 setActiveTab(activeTab === 'map' ? 'studio' : 'map');
               }}
               className="hidden sm:inline-flex items-center rounded overflow-hidden border border-[#2D7A1E] shadow cursor-pointer"
-              title="Buka Peta Level Kurikulum"
+              title="Buka Peta Kursus & Level Kurikulum"
             >
               <span className="bg-[#57B832] hover:bg-[#4FA62C] px-3 py-1.5 text-xs font-extrabold text-white inline-flex items-center gap-1.5">
                 <BookOpen className="w-3.5 h-3.5" />
@@ -352,6 +390,29 @@ export const StudentDashboard: React.FC<Props> = ({
               <span className="bg-[#459925] px-2 py-1.5 text-white flex items-center">
                 <Play className="w-3 h-3 fill-white" />
               </span>
+            </button>
+
+            {/* Codementum Interactive Learning Media Button */}
+            <button
+              type="button"
+              onClick={() => {
+                soundEngine.playButtonClick();
+                if (activeTab === 'media') {
+                  setActiveTab('studio');
+                } else {
+                  setMediaInitialUnit(currentLevel.tier);
+                  setActiveTab('media');
+                }
+              }}
+              className={`hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-extrabold border cursor-pointer ${
+                activeTab === 'media'
+                  ? 'bg-[#FFE600] text-black border-black'
+                  : 'bg-[#3A414E] text-white border-white/15 hover:bg-[#485060]'
+              }`}
+              title="Media Belajar Interaktif (Slide Konsep, Lab Mini & Kuis)"
+            >
+              <Presentation className="w-3.5 h-3.5" />
+              <span>Media Belajar</span>
             </button>
 
             {/* Trial Mode Quick Upgrade Button */}
@@ -571,7 +632,16 @@ export const StudentDashboard: React.FC<Props> = ({
             onSelectLevel={(id) => handleOpenLevel(id)}
             onOpenCertificates={() => setActiveTab('certificates')}
             onOpenModule={(tier) => setModuleModalTier(tier)}
+            onOpenMedia={(tier) => openMediaUnit(tier)}
             onLevelComplete={handleLevelComplete}
+          />
+        )}
+
+        {activeTab === 'media' && (
+          <LearningMediaHub
+            initialUnit={mediaInitialUnit}
+            onLaunchUnit={handleLaunchFromMedia}
+            onOpenPrintableModule={(tier) => setModuleModalTier(tier)}
           />
         )}
 
@@ -604,26 +674,133 @@ export const StudentDashboard: React.FC<Props> = ({
               </div>
             )}
 
-            <div className="neo-card bg-white p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div>
-                <h1 className="font-display text-3xl font-extrabold">Peta Petualangan Coding</h1>
-                <p className="text-sm text-neutral-700 mt-1">
-                  Selesaikan seluruh 3 level pada setiap tingkatan untuk membuka sertifikat kelulusan otomatis.
-                </p>
+            {/* CODEMENTUM-STYLE COURSE HUB HEADER + 4 PROGRAM TRACKS */}
+            <div className="neo-card bg-white p-5 sm:p-6 space-y-5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <h1 className="font-display text-3xl font-extrabold">
+                    Peta Kursus &amp; Petualangan Coding
+                  </h1>
+                  <p className="text-sm text-neutral-700 mt-1">
+                    Pelajari slide konsep interaktif, selesaikan pulau misi Studio L1–L9, lalu bangun proyek App, Game, dan AI-ML.
+                  </p>
+                </div>
+                <div className="w-full sm:w-64 space-y-1.5">
+                  <div className="flex justify-between text-xs font-extrabold tabular-nums">
+                    <span>Progres Coding Studio</span>
+                    <span>
+                      {completedCount}/{LEVELS.length} Level ({progressPercent}%)
+                    </span>
+                  </div>
+                  <div className="h-3.5 bg-[#FFFDF7] border-2 border-black">
+                    <div className="h-full bg-[#4ADE80]" style={{ width: `${progressPercent}%` }} />
+                  </div>
+                </div>
               </div>
-              <div className="w-full sm:w-64 space-y-1.5">
-                <div className="flex justify-between text-xs font-extrabold tabular-nums">
-                  <span>Progres Keseluruhan</span>
-                  <span>
-                    {completedCount}/{LEVELS.length} Level ({progressPercent}%)
-                  </span>
-                </div>
-                <div className="h-3.5 bg-[#FFFDF7] border-2 border-black">
-                  <div className="h-full bg-[#4ADE80]" style={{ width: `${progressPercent}%` }} />
-                </div>
+
+              {/* 4 Codementum My Courses Cards */}
+              <div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-3.5">
+                {[
+                  {
+                    id: 'studio' as const,
+                    title: 'Coding Studio',
+                    sub: 'Blok, Python & JS (9 Level)',
+                    done: completedCount,
+                    total: LEVELS.length,
+                    unlocked: true,
+                    accent: '#4ADE80',
+                    mediaUnit: currentLevel.tier as MediaUnitId,
+                    onOpen: () => setActiveTab('studio'),
+                  },
+                  {
+                    id: 'app_maker' as const,
+                    title: 'App Maker',
+                    sub: '5 Proyek Web Interaktif',
+                    done: myAppMakerProgress.length,
+                    total: APP_MAKER_PROJECTS.length,
+                    unlocked: hasAppMaker,
+                    accent: '#C084FC',
+                    mediaUnit: 'app_maker' as MediaUnitId,
+                    onOpen: () => setActiveTab('app_maker'),
+                  },
+                  {
+                    id: 'game_maker' as const,
+                    title: 'Game Maker',
+                    sub: '5 Game Arcade & Logika',
+                    done: myGameMakerProgress.length,
+                    total: GAME_MAKER_PROJECTS.length,
+                    unlocked: hasGameMaker,
+                    accent: '#38BDF8',
+                    mediaUnit: 'game_maker' as MediaUnitId,
+                    onOpen: () => setActiveTab('game_maker'),
+                  },
+                  {
+                    id: 'ai_ml' as const,
+                    title: 'AI-ML Vision',
+                    sub: 'Cartoonizer & Face Detection',
+                    done: myAiMlProgress.length,
+                    total: AI_ML_PROJECTS.length,
+                    unlocked: hasAiMl,
+                    accent: '#FDBA74',
+                    mediaUnit: 'ai_ml' as MediaUnitId,
+                    onOpen: () => setActiveTab('ai_ml'),
+                  },
+                ].map((course) => {
+                  const pct = Math.round((course.done / Math.max(1, course.total)) * 100);
+                  return (
+                    <div
+                      key={course.id}
+                      className="border-2 border-black bg-[#FFFDF7] p-3.5 flex flex-col justify-between gap-3 shadow-[3px_3px_0px_0px_#000]"
+                    >
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between gap-2">
+                          <span
+                            className="px-2 py-0.5 border-2 border-black text-[11px] font-extrabold"
+                            style={{ backgroundColor: course.accent }}
+                          >
+                            {course.unlocked ? 'Aktif' : 'Terkunci'}
+                          </span>
+                          <span className="font-mono text-xs font-extrabold tabular-nums">
+                            {course.done}/{course.total}
+                          </span>
+                        </div>
+                        <div className="font-display font-extrabold text-base">{course.title}</div>
+                        <div className="text-[11px] text-neutral-700">{course.sub}</div>
+                        <div className="h-2 bg-white border border-black">
+                          <div
+                            className="h-full"
+                            style={{ width: `${pct}%`, backgroundColor: course.accent }}
+                          />
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            soundEngine.playButtonClick();
+                            course.onOpen();
+                          }}
+                          className="neo-btn flex-1 py-1.5 px-2 text-xs font-extrabold bg-white cursor-pointer"
+                        >
+                          {course.unlocked ? 'Buka Lab' : 'Aktifkan'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => openMediaUnit(course.mediaUnit)}
+                          className="neo-btn py-1.5 px-2.5 text-xs font-extrabold bg-[#FFE600] inline-flex items-center gap-1 cursor-pointer"
+                          title={`Buka Media Belajar ${course.title}`}
+                        >
+                          <Presentation className="w-3.5 h-3.5" />
+                          Slide
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
 
+            {/* CODEMENTUM WINDING FOREST ISLAND ADVENTURE PATHS PER TIER */}
             <div className="space-y-8">
               {TIERS.map((tier) => {
                 const tierLevels = getLevelsByTier(tier.id);
@@ -639,10 +816,18 @@ export const StudentDashboard: React.FC<Props> = ({
                         </h2>
                         <p className="text-xs sm:text-sm text-neutral-700">{tier.description}</p>
                       </div>
-                      <div className="flex flex-wrap items-center gap-2.5">
+                      <div className="flex flex-wrap items-center gap-2">
                         <span className="font-mono text-xs font-extrabold tabular-nums">
                           {tierDoneCount}/{tierLevels.length} Selesai
                         </span>
+                        <button
+                          type="button"
+                          onClick={() => openMediaUnit(tier.id)}
+                          className="neo-btn bg-[#FFE600] px-3 py-1.5 text-xs font-extrabold inline-flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <Presentation className="w-4 h-4" />
+                          Slide &amp; Kuis
+                        </button>
                         <button
                           type="button"
                           onClick={() => {
@@ -652,7 +837,7 @@ export const StudentDashboard: React.FC<Props> = ({
                           className="neo-btn bg-[#38BDF8] px-3 py-1.5 text-xs font-extrabold inline-flex items-center gap-1.5 cursor-pointer"
                         >
                           <BookOpen className="w-4 h-4" />
-                          Modul Singkat
+                          Modul PDF
                         </button>
                         {hasCert && (
                           <button
@@ -661,12 +846,89 @@ export const StudentDashboard: React.FC<Props> = ({
                               soundEngine.playButtonClick();
                               setPreviewCert(hasCert);
                             }}
-                            className="neo-btn bg-[#FFE600] px-3 py-1.5 text-xs font-extrabold inline-flex items-center gap-1.5 cursor-pointer"
+                            className="neo-btn bg-[#4ADE80] px-3 py-1.5 text-xs font-extrabold inline-flex items-center gap-1.5 cursor-pointer"
                           >
                             <Award className="w-4 h-4" />
-                            Lihat Sertifikat
+                            Sertifikat
                           </button>
                         )}
+                      </div>
+                    </div>
+
+                    {/* Winding Isometric Meadow Adventure Strip (Codementum Island Path) */}
+                    <div className="neo-card bg-gradient-to-r from-[#2D6A2E] via-[#419234] to-[#2D6A2E] p-4 sm:p-5 relative overflow-hidden">
+                      <svg
+                        viewBox="0 0 900 120"
+                        preserveAspectRatio="none"
+                        className="hidden sm:block pointer-events-none absolute inset-0 w-full h-full opacity-90"
+                        aria-hidden="true"
+                      >
+                        <path
+                          d="M 150 62 C 280 18, 340 105, 450 62 C 560 18, 620 105, 750 62"
+                          fill="none"
+                          stroke="#E8D19A"
+                          strokeWidth="16"
+                          strokeLinecap="round"
+                        />
+                        <path
+                          d="M 150 62 C 280 18, 340 105, 450 62 C 560 18, 620 105, 750 62"
+                          fill="none"
+                          stroke="#8C5A2B"
+                          strokeWidth="4"
+                          strokeDasharray="10 10"
+                          strokeLinecap="round"
+                        />
+                      </svg>
+
+                      <div className="relative z-10 grid grid-cols-3 gap-3 items-center">
+                        {tierLevels.map((lvl) => {
+                          const prog = progressByLevel.get(lvl.id);
+                          const unlocked = isLevelUnlocked(lvl.order);
+                          const completed = Boolean(prog);
+                          const charId = getCharacterForLevel(lvl.order);
+                          const isCurrent = selectedLevelId === lvl.id;
+                          return (
+                            <button
+                              key={`node-${lvl.id}`}
+                              type="button"
+                              onClick={() => handleOpenLevel(lvl.id)}
+                              disabled={!unlocked && !(isTrialStudent && lvl.order > 1)}
+                              className="flex flex-col items-center gap-1.5 group cursor-pointer disabled:cursor-not-allowed"
+                            >
+                              <div className="relative">
+                                <div
+                                  className={`w-14 h-14 sm:w-16 sm:h-16 rounded-full border-[3px] border-[#3B1F0B] flex items-center justify-center font-display text-xl sm:text-2xl font-extrabold shadow-[0_4px_0_#2A1406] transition-transform group-hover:scale-105 ${
+                                    completed
+                                      ? 'bg-gradient-to-b from-[#FFE600] to-[#F59E0B] text-black'
+                                      : unlocked
+                                        ? 'bg-gradient-to-b from-[#77E248] to-[#469A22] text-white'
+                                        : 'bg-neutral-500 text-neutral-200'
+                                  } ${isCurrent ? 'ring-4 ring-white' : ''}`}
+                                >
+                                  {unlocked ? lvl.order : <Lock className="w-5 h-5" />}
+                                </div>
+                                <div className="absolute -right-2 -bottom-1 bg-[#FFFDF7] rounded-full border-2 border-[#3B1F0B] p-0.5">
+                                  <MascotPortrait character={charId} className="w-6 h-6" mood={completed ? 'excited' : 'happy'} />
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-0.5 bg-black/45 px-2 py-0.5 rounded-full">
+                                {[1, 2, 3].map((s) => (
+                                  <Star
+                                    key={s}
+                                    className={`w-3.5 h-3.5 ${
+                                      prog && s <= prog.stars
+                                        ? 'fill-[#FFE600] text-[#FFE600]'
+                                        : 'text-white/30'
+                                    }`}
+                                  />
+                                ))}
+                              </div>
+                              <span className="text-[11px] font-extrabold text-white drop-shadow text-center line-clamp-1">
+                                {lvl.title}
+                              </span>
+                            </button>
+                          );
+                        })}
                       </div>
                     </div>
 
@@ -929,7 +1191,7 @@ export const StudentDashboard: React.FC<Props> = ({
 
       {/* Mobile Compact Bottom Nav */}
       <nav className="no-print lg:hidden fixed bottom-0 inset-x-0 z-30 bg-[#2C313A] text-white border-t-2 border-black grid grid-cols-6 h-14">
-        {navItems.map((item) => {
+        {mobileBottomNavItems.map((item) => {
           const Icon = item.icon;
           const active = activeTab === item.id;
           return (

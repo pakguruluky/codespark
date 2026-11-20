@@ -1,7 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
-  Play,
-  RotateCcw,
   Code2,
   Gamepad2,
   Award,
@@ -12,12 +10,28 @@ import {
   Copy,
   Check,
   Sparkles,
-  Volume2,
   BookOpen,
+  Layers,
+  Cpu,
+  Presentation,
+  FlaskConical,
+  ClipboardCheck,
+  Camera,
+  Users,
+  ShieldCheck,
+  GraduationCap,
+  Maximize2,
 } from 'lucide-react';
 import type { TierId } from '../types';
 import { TIERS } from '../data/levels';
-import { IsometricPandaSprite, PandaPortrait } from './PandaMascot';
+import { APP_MAKER_PROJECTS } from '../data/appMakerProjects';
+import { GAME_MAKER_PROJECTS } from '../data/gameMakerProjects';
+import { AI_ML_PROJECTS } from '../data/aiMlProjects';
+import {
+  CHARACTER_META,
+  MascotPortrait,
+  type CharacterId,
+} from './PandaMascot';
 import { ModuleGuideModal } from './ModuleGuideModal';
 import { soundEngine } from '../engine/soundEngine';
 
@@ -26,125 +40,71 @@ interface Props {
   onGoRegister: () => void;
 }
 
-interface DemoStep {
-  x: number;
-  y: number;
-  dir: 'E' | 'N';
-  line: number;
-  orbCollected: boolean;
-  done: boolean;
-}
-
-const DEMO_STEPS: DemoStep[] = [
-  { x: 0, y: 1, dir: 'E', line: 0, orbCollected: false, done: false },
-  { x: 1, y: 1, dir: 'E', line: 0, orbCollected: false, done: false },
-  { x: 2, y: 1, dir: 'E', line: 0, orbCollected: true, done: false },
-  { x: 3, y: 1, dir: 'E', line: 0, orbCollected: true, done: true },
-];
+const DEMO_CHARACTERS: CharacterId[] = ['panda', 'bear', 'koala'];
+const HERO_STUDIO_IMAGE = '/assets/aistudio/image_25530e88.png';
 
 export const LandingPage: React.FC<Props> = ({ onGoLogin, onGoRegister }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [demoIdx, setDemoIdx] = useState(0);
-  const [demoRunning, setDemoRunning] = useState(false);
-  const [demoTab, setDemoTab] = useState<'blocks' | 'python' | 'javascript'>('blocks');
   const [copiedCode, setCopiedCode] = useState(false);
   const [moduleModalTier, setModuleModalTier] = useState<TierId | null>(null);
-
-  useEffect(() => {
-    if (!demoRunning) return;
-    if (demoIdx >= DEMO_STEPS.length - 1) {
-      setDemoRunning(false);
-      return;
-    }
-    const timer = setTimeout(() => {
-      const nextIdx = demoIdx + 1;
-      const nextStep = DEMO_STEPS[nextIdx];
-      if (nextStep.done) {
-        soundEngine.playGemCollect();
-        soundEngine.playVictory(3);
-      } else if (nextStep.orbCollected && !DEMO_STEPS[demoIdx].orbCollected) {
-        soundEngine.playGemCollect();
-      } else {
-        soundEngine.playStep();
-      }
-      setDemoIdx(nextIdx);
-    }, 480);
-    return () => clearTimeout(timer);
-  }, [demoRunning, demoIdx]);
-
-  const runDemo = () => {
-    soundEngine.playButtonClick();
-    setDemoIdx(0);
-    setDemoRunning(true);
-  };
-
-  const resetDemo = () => {
-    soundEngine.playButtonClick();
-    setDemoRunning(false);
-    setDemoIdx(0);
-  };
+  const [previewZoomOpen, setPreviewZoomOpen] = useState(false);
+  const [heroImgError, setHeroImgError] = useState(false);
 
   const handleCopyTrialCode = () => {
     soundEngine.playButtonClick();
     navigator.clipboard?.writeText('BELAJAR2026');
     setCopiedCode(true);
-    setTimeout(() => setCopiedCode(false), 1800);
+    window.setTimeout(() => setCopiedCode(false), 1800);
   };
-
-  const currentDemo = DEMO_STEPS[demoIdx];
-
-  // Mini isometric projection for the Hero preview
-  const toIso = (gx: number, gy: number) => ({
-    ix: 120 + (gx - gy) * 34,
-    iy: 52 + (gx + gy) * 18,
-  });
-  const pandaIso = toIso(currentDemo.x, currentDemo.y);
 
   return (
     <div className="min-h-screen flex flex-col bg-[#FFFDF7] text-black">
-      {/* Top Navbar */}
+      {/* TOP BAR CONTRACT: 3 Zones (Wordmark — 4 Single-line Nav Links — 1 Primary Action) */}
       <header className="sticky top-0 z-30 bg-[#FFFDF7] border-b-[3px] border-black">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-18 flex items-center justify-between gap-8">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-8">
           <a
             href="#top"
             className="flex items-center gap-2.5 font-display text-xl sm:text-2xl font-extrabold tracking-tight whitespace-nowrap shrink-0"
           >
-            <span className="w-9 h-9 bg-[#FFE600] border-2 border-black shadow-[2px_2px_0px_0px_#000] flex items-center justify-center">
-              <Sparkles className="w-5 h-5 text-black" />
+            <span className="w-8 h-8 bg-[#FFE600] border-2 border-black shadow-[2px_2px_0px_0px_#000] flex items-center justify-center">
+              <Sparkles className="w-4 h-4 text-black" />
             </span>
             <span>CodeSpark</span>
           </a>
 
           <nav className="hidden md:flex items-center gap-7 text-sm font-bold">
-            <a href="#fitur" className="hover:underline underline-offset-4 whitespace-nowrap shrink-0">
-              Fitur
+            <a href="#program" className="hover:underline underline-offset-4 whitespace-nowrap shrink-0">
+              Program
+            </a>
+            <a href="#media" className="hover:underline underline-offset-4 whitespace-nowrap shrink-0">
+              Media Belajar
             </a>
             <a href="#kurikulum" className="hover:underline underline-offset-4 whitespace-nowrap shrink-0">
               Kurikulum
             </a>
-            <a href="#cara-bergabung" className="hover:underline underline-offset-4 whitespace-nowrap shrink-0">
-              Cara Bergabung
+            <a href="#ekosistem" className="hover:underline underline-offset-4 whitespace-nowrap shrink-0">
+              Untuk Sekolah
             </a>
-          </nav>
-
-          <div className="hidden md:flex items-center gap-3 shrink-0">
             <button
               type="button"
               onClick={() => {
                 soundEngine.playButtonClick();
                 onGoLogin('student');
               }}
-              className="neo-btn bg-white px-4 py-2 text-sm font-bold whitespace-nowrap shrink-0 cursor-pointer"
+              className="hover:underline underline-offset-4 whitespace-nowrap shrink-0 cursor-pointer"
             >
               Masuk
             </button>
+          </nav>
+
+          <div className="hidden md:flex items-center shrink-0">
             <button
               type="button"
               onClick={() => {
                 soundEngine.playButtonClick();
                 onGoRegister();
               }}
-              className="neo-btn bg-[#FFE600] px-4 py-2 text-sm font-bold whitespace-nowrap shrink-0 cursor-pointer"
+              className="neo-btn bg-[#FFE600] px-4 py-2 text-sm font-extrabold whitespace-nowrap shrink-0 cursor-pointer"
             >
               Daftar Siswa
             </button>
@@ -163,15 +123,18 @@ export const LandingPage: React.FC<Props> = ({ onGoLogin, onGoRegister }) => {
         {/* Mobile Drawer */}
         {mobileMenuOpen && (
           <div className="md:hidden bg-[#FFFDF7] border-t-2 border-black px-4 py-4 space-y-3">
-            <div className="flex flex-col gap-2 text-sm font-bold">
-              <a href="#fitur" onClick={() => setMobileMenuOpen(false)} className="py-2 border-b border-black/15">
-                Fitur Utama
+            <div className="flex flex-col gap-1.5 text-sm font-bold">
+              <a href="#program" onClick={() => setMobileMenuOpen(false)} className="py-2 border-b border-black/15">
+                4 Program Belajar
+              </a>
+              <a href="#media" onClick={() => setMobileMenuOpen(false)} className="py-2 border-b border-black/15">
+                Media Belajar Interaktif
               </a>
               <a href="#kurikulum" onClick={() => setMobileMenuOpen(false)} className="py-2 border-b border-black/15">
-                Kurikulum 3 Tingkatan
+                Kurikulum &amp; Modul PDF
               </a>
-              <a href="#cara-bergabung" onClick={() => setMobileMenuOpen(false)} className="py-2 border-b border-black/15">
-                Cara Bergabung
+              <a href="#ekosistem" onClick={() => setMobileMenuOpen(false)} className="py-2 border-b border-black/15">
+                Portal Siswa, Instruktur &amp; Admin
               </a>
             </div>
             <div className="grid grid-cols-2 gap-3 pt-2">
@@ -191,7 +154,7 @@ export const LandingPage: React.FC<Props> = ({ onGoLogin, onGoRegister }) => {
                   setMobileMenuOpen(false);
                   onGoRegister();
                 }}
-                className="neo-btn bg-[#FFE600] py-2.5 text-sm font-bold cursor-pointer"
+                className="neo-btn bg-[#FFE600] py-2.5 text-sm font-extrabold cursor-pointer"
               >
                 Daftar Siswa
               </button>
@@ -201,37 +164,45 @@ export const LandingPage: React.FC<Props> = ({ onGoLogin, onGoRegister }) => {
       </header>
 
       <main id="top" className="flex-1">
-        {/* HERO SECTION */}
+        {/* 1. HERO SECTION — PROPOSITION + ACTUAL CODING STUDIO SCREENSHOT */}
         <section className="neo-grid-bg border-b-[3px] border-black py-12 sm:py-16 lg:py-20">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 grid lg:grid-cols-12 gap-10 lg:gap-12 items-center">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 grid lg:grid-cols-12 gap-10 lg:gap-10 items-center">
             {/* Hero Copy */}
-            <div className="lg:col-span-6 space-y-6">
-              <p className="text-sm font-bold text-neutral-700">
-                CodeQuest Studio · Blocks · Python · JavaScript · Efek Suara Interaktif
-              </p>
+            <div className="lg:col-span-5 flex flex-col justify-center space-y-6">
+              <div className="flex flex-wrap items-center gap-2 text-xs sm:text-sm font-bold text-neutral-700">
+                <span>Coding Studio</span>
+                <span aria-hidden="true">·</span>
+                <span>App Maker</span>
+                <span aria-hidden="true">·</span>
+                <span>Game Maker</span>
+                <span aria-hidden="true">·</span>
+                <span>AI-ML Vision</span>
+              </div>
+
               <h1
-                className="font-display text-4xl sm:text-5xl lg:text-[3.4rem] font-extrabold leading-[1.08] tracking-tight"
+                className="font-display text-4xl sm:text-5xl lg:text-[3.1rem] font-extrabold leading-[1.08] tracking-tight"
                 style={{ textWrap: 'balance' }}
               >
-                Belajar Coding &amp; AI Seru Lewat{' '}
+                Platform Belajar Coding, Game, Aplikasi &amp;{' '}
                 <span className="bg-[#FFE600] px-2 border-2 border-black inline-block">
-                  Petualangan 2D Isometrik
+                  AI Interaktif
                 </span>
               </h1>
+
               <p className="text-base sm:text-lg text-neutral-800 leading-relaxed max-w-xl">
-                Susun blok <code className="font-mono font-bold bg-[#FFE600]/60 px-1">forward(3)</code> di papan
-                kayu interaktif, lihat kode Python &amp; JavaScript terbentuk otomatis, pandu Panda melintasi
-                pulau hutan isometrik, dan raih sertifikat resmi!
+                Belajar pemrograman dari blok visual hingga Python dan JavaScript di studio pulau
+                isometrik bergaya Codementum lengkap dengan penggaris jarak, debugger per langkah,
+                slide interaktif, hingga lab proyek aplikasi, game, dan kamera AI realtime.
               </p>
 
-              <div className="flex flex-wrap items-center gap-4 pt-2">
+              <div className="flex flex-wrap items-center gap-3.5 pt-1">
                 <button
                   type="button"
                   onClick={() => {
                     soundEngine.playButtonClick();
                     onGoRegister();
                   }}
-                  className="neo-btn bg-[#4ADE80] px-6 py-3.5 text-base font-extrabold inline-flex items-center gap-2 cursor-pointer"
+                  className="neo-btn bg-[#4ADE80] px-6 py-3.5 text-sm sm:text-base font-extrabold inline-flex items-center gap-2 cursor-pointer whitespace-nowrap"
                 >
                   Mulai Belajar Gratis
                   <ArrowRight className="w-5 h-5" />
@@ -242,216 +213,410 @@ export const LandingPage: React.FC<Props> = ({ onGoLogin, onGoRegister }) => {
                     soundEngine.playButtonClick();
                     onGoLogin('student');
                   }}
-                  className="neo-btn bg-white px-6 py-3.5 text-base font-bold cursor-pointer"
+                  className="neo-btn bg-white px-5 py-3.5 text-sm sm:text-base font-bold cursor-pointer whitespace-nowrap"
                 >
-                  Sudah Punya Akun
+                  Masuk ke Kelas
                 </button>
               </div>
 
-              <div className="pt-4 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm font-semibold text-neutral-800 border-t-2 border-black/15">
-                <span>9 Misi Playable</span>
+              {/* Clean Unboxed Quantitative Proof Strip */}
+              <div className="pt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs sm:text-sm font-bold text-neutral-800 border-t-2 border-black/15 tabular-nums">
+                <span>9 Misi Studio</span>
                 <span aria-hidden="true">·</span>
-                <span>Blocks · Python · JS</span>
+                <span>5 Proyek App Maker</span>
                 <span aria-hidden="true">·</span>
-                <span>Suara &amp; Musik Interaktif</span>
+                <span>5 Game Maker</span>
                 <span aria-hidden="true">·</span>
-                <span>Sertifikat PDF</span>
+                <span>2 Lab AI-ML</span>
+                <span aria-hidden="true">·</span>
+                <span>6 Unit Media &amp; Modul</span>
               </div>
             </div>
 
-            {/* Interactive Codementum-Style Preview Card */}
-            <div className="lg:col-span-6">
-              <div className="neo-card bg-[#2C313A] overflow-hidden">
-                {/* Mini Top Bar */}
-                <div className="px-4 py-2.5 bg-[#23272F] border-b-2 border-black flex items-center justify-between gap-2 text-white">
-                  <div className="flex items-center gap-2 text-xs font-extrabold">
-                    <Volume2 className="w-4 h-4 text-[#4ADE80]" />
-                    <span>Pratinjau Studio + Efek Suara</span>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    {(['blocks', 'python', 'javascript'] as const).map((t) => (
-                      <button
-                        key={t}
-                        type="button"
-                        onClick={() => {
-                          soundEngine.playTabSwitch();
-                          setDemoTab(t);
-                        }}
-                        className={`px-2.5 py-1 text-[11px] font-extrabold rounded cursor-pointer capitalize ${
-                          demoTab === t
-                            ? 'bg-[#E29E4B] text-white'
-                            : 'bg-[#3A414E] text-neutral-300 hover:text-white'
-                        }`}
-                      >
-                        {t}
-                      </button>
-                    ))}
-                  </div>
+            {/* Uploaded Actual Application Screenshot Showcase */}
+            <div className="lg:col-span-7">
+              <div className="neo-card bg-[#23272F] overflow-hidden">
+                <div className="px-4 py-2.5 bg-[#1D2129] border-b-2 border-black flex items-center justify-between gap-3 text-white">
+                  <span className="text-xs font-extrabold truncate">
+                    CodeSpark Coding Studio · Blocks, Python &amp; JavaScript
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      soundEngine.playButtonClick();
+                      setPreviewZoomOpen(true);
+                    }}
+                    className="px-2.5 py-1 rounded bg-[#3A414E] hover:bg-[#4B5465] text-white text-[11px] font-bold inline-flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0"
+                    title="Perbesar tampilan layar Coding Studio"
+                  >
+                    <Maximize2 className="w-3.5 h-3.5" />
+                    <span>Perbesar</span>
+                  </button>
                 </div>
 
-                <div className="grid sm:grid-cols-12">
-                  {/* Left Mini Parchment */}
-                  <div className="sm:col-span-5 cm-parchment p-3.5 border-b-2 sm:border-b-0 sm:border-r-4 border-[#6E3412] flex flex-col justify-between gap-3">
-                    {demoTab === 'blocks' ? (
-                      <div className="space-y-1.5">
-                        <div className="w-24 rounded-t-lg rounded-b bg-[#57B832] border-2 border-[#317215] px-3 py-1.5 font-display text-xs font-extrabold text-white">
-                          START
-                        </div>
-                        <div className="rounded bg-[#2B8EF2] border-2 border-[#1A65B5] px-3 py-1.5 font-display text-xs font-extrabold text-white flex items-center justify-between">
-                          <span>forward →</span>
-                          <span className="px-2 py-0.5 rounded bg-[#1B67B7] font-mono">3</span>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="rounded bg-[#1E1F26] border-2 border-[#5C2A0E] p-3 font-mono text-xs text-[#7CE38B]">
-                        <div className="text-neutral-500 text-[10px] mb-1">
-                          {demoTab === 'python' ? 'misi_1.py' : 'misi1.js'}
-                        </div>
-                        <div className={demoRunning ? 'bg-[#FFE600] text-black px-1 font-bold' : ''}>
-                          {demoTab === 'python' ? 'forward(3)' : 'forward(3);'}
-                        </div>
-                      </div>
-                    )}
-
-                    <div className="flex gap-2">
-                      <button
-                        type="button"
-                        onClick={runDemo}
-                        disabled={demoRunning}
-                        className="cm-green-ok text-white px-3 py-2 text-xs font-extrabold flex-1 inline-flex items-center justify-center gap-1.5 cursor-pointer"
-                      >
-                        <Play className="w-3.5 h-3.5 fill-white" />
-                        Jalankan
-                      </button>
-                      <button
-                        type="button"
-                        onClick={resetDemo}
-                        className="px-2.5 py-2 rounded bg-[#2B8EF2] border-2 border-[#1A65B5] text-white cursor-pointer"
-                        aria-label="Reset demo"
-                      >
-                        <RotateCcw className="w-3.5 h-3.5" />
-                      </button>
+                {heroImgError ? (
+                  <div className="aspect-[16/9] bg-[#2C313A] flex flex-col items-center justify-center p-8 text-center text-white space-y-2">
+                    <Code2 className="w-10 h-10 text-[#FFE600]" />
+                    <div className="font-display font-extrabold text-lg">
+                      CodeSpark Coding Studio
                     </div>
+                    <p className="text-xs text-neutral-300">
+                      Workspace blok visual, Python, JavaScript, dan pulau isometrik interaktif.
+                    </p>
                   </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      soundEngine.playButtonClick();
+                      setPreviewZoomOpen(true);
+                    }}
+                    className="block w-full bg-[#2C313A] cursor-zoom-in focus:outline-none group"
+                    aria-label="Perbesar pratinjau tampilan aplikasi CodeSpark"
+                  >
+                    <img
+                      src={HERO_STUDIO_IMAGE}
+                      alt="Tampilan nyata aplikasi CodeSpark Coding Studio dengan blok perintah repeat dan if path_clear, sinkronisasi Python, tombol debugger, penggaris jarak, dan pulau isometrik Panda"
+                      referrerPolicy="no-referrer"
+                      onError={() => setHeroImgError(true)}
+                      className="w-full h-auto block transition-transform duration-200 group-hover:scale-[1.01]"
+                    />
+                  </button>
+                )}
 
-                  {/* Right Mini Isometric Forest */}
-                  <div className="sm:col-span-7 bg-gradient-to-b from-[#3A414A] to-[#2B6224] p-3 flex flex-col justify-between">
-                    <svg viewBox="0 0 280 185" className="w-full h-44">
-                      {/* Green island */}
-                      <polygon points="140,18 265,86 140,156 15,86" fill="#5CB834" stroke="#2D6A1A" strokeWidth="3" />
-                      <polygon points="15,86 140,156 140,172 15,102" fill="#6D4C2F" />
-                      <polygon points="140,156 265,86 265,102 140,172" fill="#4E331B" />
-
-                      {/* Stone Walkway (4 tiles) */}
-                      {[0, 1, 2, 3].map((gx) => {
-                        const c = toIso(gx, 1);
-                        return (
-                          <polygon
-                            key={gx}
-                            points={`${c.ix},${c.iy - 16} ${c.ix + 32},${c.iy} ${c.ix},${c.iy + 16} ${c.ix - 32},${c.iy}`}
-                            fill={gx === 3 ? '#FEF08A' : '#EEF2F6'}
-                            stroke="#64748B"
-                            strokeWidth="1.5"
-                          />
-                        );
-                      })}
-
-                      {/* Collectible Orb */}
-                      {!currentDemo.orbCollected && (() => {
-                        const o = toIso(2, 1);
-                        return (
-                          <g transform={`translate(${o.ix}, ${o.iy})`}>
-                            <circle cx="0" cy="-7" r="8" fill="#E63946" stroke="#4A0E14" strokeWidth="1.8" />
-                            <circle cx="0" cy="-16" r="2.2" fill="#FFE600" />
-                          </g>
-                        );
-                      })()}
-
-                      {/* Panda Sprite */}
-                      <g
-                        style={{
-                          transform: `translate(${pandaIso.ix}px, ${pandaIso.iy}px) scale(0.8)`,
-                          transition: 'transform 360ms cubic-bezier(0.16, 1, 0.3, 1)',
-                        }}
-                      >
-                        <IsometricPandaSprite
-                          dir="E"
-                          status={currentDemo.done ? 'success' : demoRunning ? 'running' : 'idle'}
-                        />
-                      </g>
-                    </svg>
-
-                    <div className="cm-wood-dialog px-3 py-2 flex items-center gap-2.5">
-                      <PandaPortrait className="w-10 h-10 shrink-0" mood={currentDemo.done ? 'excited' : 'happy'} />
-                      <p className="text-[11px] font-semibold text-[#FFF4DC] leading-snug">
-                        {currentDemo.done
-                          ? 'Hore! Panda sampai ke tujuan dengan 3 bintang!'
-                          : 'Klik tombol Jalankan untuk mendengar efek suara & melihat Panda melangkah!'}
-                      </p>
-                    </div>
-                  </div>
+                <div className="px-4 py-2.5 bg-[#FFFDF7] border-t-2 border-black flex flex-wrap items-center justify-between gap-2 text-xs font-bold text-neutral-800">
+                  <span>
+                    Tampilan nyata ruang belajar: blok drag-and-drop, Live Python, Step 1× &amp; Penggaris Jarak.
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      soundEngine.playButtonClick();
+                      onGoRegister();
+                    }}
+                    className="underline font-extrabold hover:text-neutral-600 cursor-pointer whitespace-nowrap shrink-0"
+                  >
+                    Coba Studio Langsung →
+                  </button>
                 </div>
               </div>
             </div>
           </div>
         </section>
 
-        {/* FITUR UTAMA */}
-        <section id="fitur" className="py-16 sm:py-20 border-b-[3px] border-black bg-white">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="max-w-2xl mb-12">
-              <p className="text-sm font-bold text-neutral-600 mb-2">Keunggulan Platform</p>
-              <h2 className="font-display text-3xl sm:text-4xl font-extrabold tracking-tight">
-                Dirancang Khusus untuk Belajar Pemrograman Modern
+        {/* 2. 4 PROGRAM BELAJAR LENGKAP — ASYMMETRIC BENTO SHOWCASE */}
+        <section id="program" className="py-16 sm:py-20 border-b-[3px] border-black bg-white">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-10">
+            <div className="max-w-2xl space-y-2">
+              <p className="text-xs sm:text-sm font-bold text-neutral-600">
+                Empat Jalur Pembelajaran Terpadu
+              </p>
+              <h2
+                className="font-display text-3xl sm:text-4xl font-extrabold tracking-tight"
+                style={{ textWrap: 'balance' }}
+              >
+                Dari Logika Dasar hingga Aplikasi Web, Game, dan Kamera AI Realtime
               </h2>
+              <p className="text-sm sm:text-base text-neutral-700 leading-relaxed">
+                Setiap siswa wajib menyelesaikan Coding Studio sebagai pondasi, dan dapat membuka
+                program lanjutan App Maker, Game Maker, serta AI-ML Vision melalui kode akses atau aktivasi Admin.
+              </p>
             </div>
 
-            <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            {/* Row 1: Coding Studio (7 cols) + AI-ML Vision (5 cols) */}
+            <div className="grid lg:grid-cols-12 gap-6 items-stretch">
+              {/* 01. Coding Studio */}
+              <div className="lg:col-span-7 neo-card bg-[#FFFDF7] p-6 sm:p-7 flex flex-col justify-between gap-6">
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-11 h-11 bg-[#4ADE80] border-2 border-black shadow-[3px_3px_0px_0px_#000] flex items-center justify-center shrink-0">
+                        <Code2 className="w-5 h-5 text-black" />
+                      </div>
+                      <div>
+                        <div className="text-xs font-bold text-neutral-600">
+                          01. Program Wajib · 9 Level Bertingkat
+                        </div>
+                        <h3 className="font-display text-2xl font-extrabold">Coding Studio Isometrik</h3>
+                      </div>
+                    </div>
+                  </div>
+
+                  <p className="text-sm text-neutral-800 leading-relaxed">
+                    Susun blok puzzle dengan drag-and-drop atau ketik langsung di editor Python dan
+                    JavaScript. Dilengkapi <strong>Penggaris Jarak</strong> untuk mengukur langkah,{' '}
+                    <strong>Step-by-Step Debugger</strong>, sorotan blok aktif, narasi suara Bahasa
+                    Indonesia, dan 3 karakter petualang yang berganti di setiap stage.
+                  </p>
+
+                  {/* 3 Stage Characters Strip */}
+                  <div className="grid sm:grid-cols-3 gap-3 pt-1">
+                    {DEMO_CHARACTERS.map((cid, i) => {
+                      const meta = CHARACTER_META[cid];
+                      return (
+                        <div
+                          key={cid}
+                          className="p-3 bg-white border-2 border-black flex items-center gap-2.5"
+                        >
+                          <MascotPortrait character={cid} className="w-10 h-10 shrink-0" mood="happy" />
+                          <div className="min-w-0">
+                            <div className="font-display font-extrabold text-sm">{meta.name}</div>
+                            <div className="text-[11px] text-neutral-600 truncate">
+                              Stage {i + 1}, {i + 4}, {i + 7}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="pt-4 border-t-2 border-black/15 flex flex-wrap items-center justify-between gap-3 text-xs font-bold">
+                  <span className="text-neutral-700">
+                    Blocks · Python (.py) · JavaScript (.js) · Sertifikat Otomatis
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      soundEngine.playButtonClick();
+                      onGoRegister();
+                    }}
+                    className="underline hover:text-neutral-600 cursor-pointer whitespace-nowrap"
+                  >
+                    Coba Level 1 Gratis →
+                  </button>
+                </div>
+              </div>
+
+              {/* 02. AI-ML Vision */}
+              <div className="lg:col-span-5 neo-card bg-[#FFFDF7] p-6 sm:p-7 flex flex-col justify-between gap-6">
+                <div className="space-y-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-11 h-11 bg-[#FDBA74] border-2 border-black shadow-[3px_3px_0px_0px_#000] flex items-center justify-center shrink-0">
+                      <Cpu className="w-5 h-5 text-black" />
+                    </div>
+                    <div>
+                      <div className="text-xs font-bold text-neutral-600">
+                        02. Program Pilihan · 2 Lab Vision
+                      </div>
+                      <h3 className="font-display text-2xl font-extrabold">AI-ML Vision Kamera</h3>
+                    </div>
+                  </div>
+
+                  <p className="text-sm text-neutral-800 leading-relaxed">
+                    Eksperimen Computer Vision langsung dari kamera perangkat asli dengan performa
+                    realtime menggunakan MediaPipe Face Landmarker.
+                  </p>
+
+                  <div className="space-y-2.5">
+                    {AI_ML_PROJECTS.map((proj) => (
+                      <div key={proj.id} className="p-3 bg-white border-2 border-black space-y-0.5">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-display font-extrabold text-sm">{proj.title}</span>
+                          <span className="font-mono text-[11px] font-bold text-neutral-600">
+                            {proj.badge}
+                          </span>
+                        </div>
+                        <p className="text-xs text-neutral-700 leading-snug">{proj.subtitle}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="pt-4 border-t-2 border-black/15 flex items-center justify-between text-xs font-bold text-neutral-700">
+                  <span className="inline-flex items-center gap-1.5">
+                    <Camera className="w-4 h-4 text-black shrink-0" />
+                    Kamera Live · Unggah Foto · Sampel
+                  </span>
+                  <span>Bertahap</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Row 2: App Maker (6 cols) + Game Maker (6 cols) */}
+            <div className="grid lg:grid-cols-12 gap-6 items-stretch">
+              {/* 03. App Maker */}
+              <div className="lg:col-span-6 neo-card bg-[#FFFDF7] p-6 sm:p-7 flex flex-col justify-between gap-5">
+                <div className="space-y-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-11 h-11 bg-[#C084FC] border-2 border-black shadow-[3px_3px_0px_0px_#000] flex items-center justify-center shrink-0">
+                      <Layers className="w-5 h-5 text-black" />
+                    </div>
+                    <div>
+                      <div className="text-xs font-bold text-neutral-600">
+                        03. Program Pilihan · 5 Proyek Bertahap
+                      </div>
+                      <h3 className="font-display text-2xl font-extrabold">App Maker Studio</h3>
+                    </div>
+                  </div>
+
+                  <p className="text-sm text-neutral-800 leading-relaxed">
+                    Bangun lima aplikasi web nyata selangkah demi selangkah. Proyek berikutnya otomatis
+                    terbuka setelah proyek sebelumnya tuntas.
+                  </p>
+
+                  <ol className="grid sm:grid-cols-2 gap-2.5 text-xs">
+                    {APP_MAKER_PROJECTS.map((proj) => (
+                      <li
+                        key={proj.id}
+                        className="p-2.5 bg-white border-2 border-black flex items-start gap-2"
+                      >
+                        <span className="font-mono font-extrabold text-neutral-500 tabular-nums">
+                          0{proj.order}
+                        </span>
+                        <div>
+                          <div className="font-display font-extrabold text-sm leading-tight">
+                            {proj.title}
+                          </div>
+                          <div className="text-[11px] text-neutral-600 mt-0.5 line-clamp-1">
+                            {proj.subtitle}
+                          </div>
+                        </div>
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+
+                <div className="pt-3 border-t-2 border-black/15 text-xs font-bold text-neutral-700">
+                  Editor interaktif · Pratinjau langsung · Sertifikat App Maker
+                </div>
+              </div>
+
+              {/* 04. Game Maker */}
+              <div className="lg:col-span-6 neo-card bg-[#FFFDF7] p-6 sm:p-7 flex flex-col justify-between gap-5">
+                <div className="space-y-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-11 h-11 bg-[#38BDF8] border-2 border-black shadow-[3px_3px_0px_0px_#000] flex items-center justify-center shrink-0">
+                      <Gamepad2 className="w-5 h-5 text-black" />
+                    </div>
+                    <div>
+                      <div className="text-xs font-bold text-neutral-600">
+                        04. Program Pilihan · 5 Game Bertahap
+                      </div>
+                      <h3 className="font-display text-2xl font-extrabold">Game Maker Lab</h3>
+                    </div>
+                  </div>
+
+                  <p className="text-sm text-neutral-800 leading-relaxed">
+                    Rancang dan mainkan lima game logika hingga arcade langsung di browser dengan
+                    sistem skor, nyawa, dan tantangan bertahap.
+                  </p>
+
+                  <ol className="grid sm:grid-cols-2 gap-2.5 text-xs">
+                    {GAME_MAKER_PROJECTS.map((proj) => (
+                      <li
+                        key={proj.id}
+                        className="p-2.5 bg-white border-2 border-black flex items-start gap-2"
+                      >
+                        <span className="font-mono font-extrabold text-neutral-500 tabular-nums">
+                          0{proj.order}
+                        </span>
+                        <div>
+                          <div className="font-display font-extrabold text-sm leading-tight">
+                            {proj.title}
+                          </div>
+                          <div className="text-[11px] text-neutral-600 mt-0.5 line-clamp-1">
+                            {proj.subtitle}
+                          </div>
+                        </div>
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+
+                <div className="pt-3 border-t-2 border-black/15 text-xs font-bold text-neutral-700">
+                  Logika game · Event &amp; skor realtime · Sertifikat Game Maker
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* 3. PUSAT MEDIA BELAJAR INTERAKTIF (ALA CODEMENTUM) */}
+        <section id="media" className="py-16 sm:py-20 border-b-[3px] border-black bg-[#FFFDF7]">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-10">
+            <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4">
+              <div className="max-w-2xl space-y-2">
+                <p className="text-xs sm:text-sm font-bold text-neutral-600">
+                  Pusat Media Belajar Interaktif · 6 Unit Kurikulum
+                </p>
+                <h2
+                  className="font-display text-3xl sm:text-4xl font-extrabold tracking-tight"
+                  style={{ textWrap: 'balance' }}
+                >
+                  Pahami Konsep Dulu Sebelum Menulis Kode
+                </h2>
+                <p className="text-sm sm:text-base text-neutral-700 leading-relaxed">
+                  Setiap unit dilengkapi empat media belajar terstruktur agar siswa benar-benar
+                  memahami logika pemrograman, bukan sekadar menghafal sintaks.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  soundEngine.playButtonClick();
+                  setModuleModalTier('pemula');
+                }}
+                className="neo-btn bg-[#38BDF8] px-4 py-2.5 text-sm font-extrabold inline-flex items-center gap-2 self-start lg:self-auto cursor-pointer whitespace-nowrap"
+              >
+                <BookOpen className="w-4 h-4" />
+                Pratinjau Modul PDF
+              </button>
+            </div>
+
+            <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-5">
               {[
                 {
                   num: '01',
-                  title: 'Block-to-Text Sync',
-                  desc: 'Transisi mulus dari blok puzzle visual ke sintaks Python & JavaScript secara otomatis di layar yang sama.',
+                  title: 'Slide Konsep Animasi',
+                  desc: 'Visualisasi urutan langkah, kompas belok, loop, sensor if/else, hingga pipeline AI lengkap dengan narasi suara Bahasa Indonesia.',
                   color: '#FFE600',
-                  icon: Code2,
+                  icon: Presentation,
                 },
                 {
                   num: '02',
-                  title: 'Arena 2D Isometrik + Suara',
-                  desc: 'Pulau hutan isometrik interaktif lengkap dengan efek suara langkah, permata, musik latar, dan sistem 3 bintang.',
+                  title: 'Lab Mini Perintah',
+                  desc: 'Papan latihan cepat 5×3 untuk mencoba blok forward dan turn sambil melihat perubahan kode Python & JavaScript secara langsung.',
                   color: '#4ADE80',
-                  icon: Gamepad2,
+                  icon: FlaskConical,
                 },
                 {
                   num: '03',
-                  title: 'Sertifikat Otomatis',
-                  desc: 'Sertifikat resmi bernomor unik langsung terbit begitu siswa menuntaskan seluruh level tiap tingkatan.',
-                  color: '#38BDF8',
-                  icon: Award,
+                  title: 'Kuis Pemahaman 3★',
+                  desc: 'Evaluasi pilihan ganda interaktif per unit dengan pembahasan instan untuk menguji pemahaman sebelum masuk ke tantangan utama.',
+                  color: '#C084FC',
+                  icon: ClipboardCheck,
                 },
                 {
                   num: '04',
-                  title: 'Pantauan Realtime',
-                  desc: 'Dashboard analitik khusus Instruktur dan Admin dengan grafik Recharts yang diperbarui langsung.',
-                  color: '#C084FC',
-                  icon: BarChart3,
+                  title: 'Modul Singkat PDF',
+                  desc: 'Ringkasan materi 3 halaman bergaya buku kerja yang rapi dan siap cetak PDF untuk pendampingan di kelas maupun di rumah.',
+                  color: '#38BDF8',
+                  icon: BookOpen,
                 },
-              ].map((feat) => {
-                const Icon = feat.icon;
+              ].map((item) => {
+                const Icon = item.icon;
                 return (
-                  <div key={feat.num} className="neo-card p-6 flex flex-col justify-between bg-[#FFFDF7]">
-                    <div>
-                      <div className="flex items-center justify-between mb-5">
+                  <div
+                    key={item.num}
+                    className="neo-card bg-white p-5 flex flex-col justify-between gap-4"
+                  >
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
                         <div
-                          className="w-12 h-12 border-2 border-black shadow-[3px_3px_0px_0px_#000] flex items-center justify-center"
-                          style={{ backgroundColor: feat.color }}
+                          className="w-11 h-11 border-2 border-black shadow-[3px_3px_0px_0px_#000] flex items-center justify-center"
+                          style={{ backgroundColor: item.color }}
                         >
-                          <Icon className="w-6 h-6 text-black" />
+                          <Icon className="w-5 h-5 text-black" />
                         </div>
-                        <span className="font-mono text-sm font-bold text-neutral-500">{feat.num}</span>
+                        <span className="font-mono text-sm font-extrabold text-neutral-500 tabular-nums">
+                          {item.num}
+                        </span>
                       </div>
-                      <h3 className="font-display text-xl font-extrabold mb-2">{feat.title}</h3>
-                      <p className="text-sm text-neutral-700 leading-relaxed">{feat.desc}</p>
+                      <h3 className="font-display text-lg font-extrabold">{item.title}</h3>
+                      <p className="text-xs sm:text-sm text-neutral-700 leading-relaxed">
+                        {item.desc}
+                      </p>
                     </div>
                   </div>
                 );
@@ -460,35 +625,40 @@ export const LandingPage: React.FC<Props> = ({ onGoLogin, onGoRegister }) => {
           </div>
         </section>
 
-        {/* KURIKULUM 3 TINGKATAN */}
-        <section id="kurikulum" className="py-16 sm:py-20 border-b-[3px] border-black bg-[#FFFDF7]">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="max-w-2xl mb-12">
-              <p className="text-sm font-bold text-neutral-600 mb-2">Kurikulum Terstruktur</p>
-              <h2 className="font-display text-3xl sm:text-4xl font-extrabold tracking-tight">
-                Tiga Tingkatan dari Nol hingga AI Navigator
+        {/* 4. KURIKULUM 3 TINGKATAN STUDIO + PRATINJAU MODUL LANGSUNG */}
+        <section id="kurikulum" className="py-16 sm:py-20 border-b-[3px] border-black bg-white">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-10">
+            <div className="max-w-2xl space-y-2">
+              <p className="text-xs sm:text-sm font-bold text-neutral-600">
+                Jalur Petualangan Coding Studio
+              </p>
+              <h2
+                className="font-display text-3xl sm:text-4xl font-extrabold tracking-tight"
+                style={{ textWrap: 'balance' }}
+              >
+                Tiga Tingkatan Terstruktur dari Nol hingga AI Navigator
               </h2>
             </div>
 
             <div className="grid md:grid-cols-3 gap-6">
               {TIERS.map((tier) => (
-                <div key={tier.id} className="neo-card bg-white flex flex-col justify-between">
+                <div key={tier.id} className="neo-card bg-[#FFFDF7] flex flex-col justify-between">
                   <div>
                     <div
-                      className="px-6 py-4 border-b-[3px] border-black flex items-center justify-between"
+                      className="px-5 py-4 border-b-[3px] border-black flex items-center justify-between gap-2"
                       style={{ backgroundColor: tier.accentColor }}
                     >
                       <span className="font-display font-extrabold text-lg">
                         {tier.number}. {tier.name}
                       </span>
-                      <span className="font-mono text-xs font-bold">{tier.badgeText}</span>
+                      <span className="font-mono text-xs font-extrabold">{tier.badgeText}</span>
                     </div>
-                    <div className="p-6 space-y-3">
+                    <div className="p-5 space-y-2.5">
                       <h3 className="font-display text-xl font-extrabold">{tier.subtitle}</h3>
                       <p className="text-sm text-neutral-700 leading-relaxed">{tier.description}</p>
                     </div>
                   </div>
-                  <div className="px-6 pb-6 pt-2">
+                  <div className="px-5 pb-5 pt-2">
                     <div className="border-t-2 border-black/15 pt-4 flex flex-wrap items-center justify-between gap-2 text-xs font-bold">
                       <button
                         type="button"
@@ -496,14 +666,17 @@ export const LandingPage: React.FC<Props> = ({ onGoLogin, onGoRegister }) => {
                           soundEngine.playButtonClick();
                           setModuleModalTier(tier.id);
                         }}
-                        className="neo-btn bg-[#FFFDF7] hover:bg-[#FFE600] px-2.5 py-1.5 text-xs font-extrabold inline-flex items-center gap-1.5 cursor-pointer"
+                        className="neo-btn bg-white hover:bg-[#FFE600] px-3 py-1.5 text-xs font-extrabold inline-flex items-center gap-1.5 cursor-pointer"
                       >
                         <BookOpen className="w-3.5 h-3.5" />
-                        Modul Singkat
+                        Baca Modul PDF
                       </button>
                       <button
                         type="button"
-                        onClick={onGoRegister}
+                        onClick={() => {
+                          soundEngine.playButtonClick();
+                          onGoRegister();
+                        }}
                         className="underline hover:text-neutral-600 cursor-pointer"
                       >
                         Ikuti Kelas →
@@ -516,27 +689,136 @@ export const LandingPage: React.FC<Props> = ({ onGoLogin, onGoRegister }) => {
           </div>
         </section>
 
-        {/* CARA BERGABUNG + DEFAULT ACCESS CODE */}
+        {/* 5. EKOSISTEM 3 PERAN REALTIME (SISWA, INSTRUKTUR, ADMIN) */}
+        <section id="ekosistem" className="py-16 sm:py-20 border-b-[3px] border-black bg-[#FFFDF7]">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-10">
+            <div className="max-w-2xl space-y-2">
+              <p className="text-xs sm:text-sm font-bold text-neutral-600">
+                Terhubung Realtime dengan Cloud Database
+              </p>
+              <h2
+                className="font-display text-3xl sm:text-4xl font-extrabold tracking-tight"
+                style={{ textWrap: 'balance' }}
+              >
+                Satu Ekosistem untuk Siswa, Instruktur, dan Administrator
+              </h2>
+            </div>
+
+            <div className="grid md:grid-cols-3 gap-6">
+              {[
+                {
+                  role: 'Siswa',
+                  accent: '#4ADE80',
+                  icon: GraduationCap,
+                  points: [
+                    'Peta kursus & pulau petualangan interaktif lengkap dengan perolehan 3 bintang.',
+                    'Akses Media Belajar, Modul PDF, Coding Studio, serta proyek pilihan App, Game & AI-ML.',
+                    'Sertifikat kelulusan bernomor unik terbit otomatis & siap cetak PDF.',
+                  ],
+                  actionLabel: 'Masuk Portal Siswa',
+                  onClick: () => onGoLogin('student'),
+                },
+                {
+                  role: 'Instruktur',
+                  accent: '#38BDF8',
+                  icon: Users,
+                  points: [
+                    'Buat kode akses kelas khusus dengan pilihan paket program (Studio, App, Game, AI-ML).',
+                    'Pantau kemajuan bintang, level tuntas, dan sertifikat seluruh siswa binaan secara realtime.',
+                    'Evaluasi capaian tiap tingkatan dengan grafik analitik kelas.',
+                  ],
+                  actionLabel: 'Portal Instruktur',
+                  onClick: () => onGoLogin('instructor'),
+                },
+                {
+                  role: 'Administrator',
+                  accent: '#C084FC',
+                  icon: ShieldCheck,
+                  points: [
+                    'Pratinjau penuh seluruh materi, slide media, Coding Studio L1–L9, App, Game & AI-ML yang semuanya terbuka.',
+                    'Kelola akun instruktur, kode akses global, serta buka akses program siswa secara manual.',
+                    'Dashboard analitik sekolah realtime dengan grafik Recharts & pengaturan kontak upgrade.',
+                  ],
+                  actionLabel: 'Portal Admin',
+                  onClick: () => onGoLogin('admin'),
+                },
+              ].map((item) => {
+                const Icon = item.icon;
+                return (
+                  <div
+                    key={item.role}
+                    className="neo-card bg-white p-6 flex flex-col justify-between gap-5"
+                  >
+                    <div className="space-y-4">
+                      <div className="flex items-center gap-3">
+                        <div
+                          className="w-11 h-11 border-2 border-black shadow-[3px_3px_0px_0px_#000] flex items-center justify-center shrink-0"
+                          style={{ backgroundColor: item.accent }}
+                        >
+                          <Icon className="w-5 h-5 text-black" />
+                        </div>
+                        <h3 className="font-display text-xl font-extrabold">Portal {item.role}</h3>
+                      </div>
+
+                      <ul className="space-y-2 text-xs sm:text-sm text-neutral-700 leading-relaxed list-disc pl-4">
+                        {item.points.map((pt) => (
+                          <li key={pt}>{pt}</li>
+                        ))}
+                      </ul>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        soundEngine.playButtonClick();
+                        item.onClick();
+                      }}
+                      className="neo-btn bg-[#FFFDF7] hover:bg-[#FFE600] w-full py-2.5 px-4 text-xs sm:text-sm font-extrabold cursor-pointer"
+                    >
+                      {item.actionLabel}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </section>
+
+        {/* 6. KONVERSI & KODE UJI COBA */}
         <section id="cara-bergabung" className="py-16 sm:py-20 bg-white">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="neo-card bg-[#FFE600] p-6 sm:p-10 grid lg:grid-cols-12 gap-8 items-center">
               <div className="lg:col-span-7 space-y-4">
-                <h2 className="font-display text-3xl sm:text-4xl font-extrabold tracking-tight">
-                  Siap Memulai Petualangan Coding Hari Ini?
+                <div className="flex flex-wrap items-center gap-2 text-xs font-extrabold text-neutral-900">
+                  <Award className="w-4 h-4" />
+                  <span>Sertifikat Resmi Otomatis</span>
+                  <span aria-hidden="true">·</span>
+                  <BarChart3 className="w-4 h-4" />
+                  <span>Sinkronisasi Cloud Realtime</span>
+                </div>
+
+                <h2
+                  className="font-display text-3xl sm:text-4xl font-extrabold tracking-tight"
+                  style={{ textWrap: 'balance' }}
+                >
+                  Siap Mulai Belajar Coding, App, Game &amp; AI Hari Ini?
                 </h2>
-                <p className="text-base font-medium text-neutral-900 leading-relaxed max-w-2xl">
-                  Dapatkan Kode Akses Kelas Penuh dari Admin / Instruktur Anda, atau coba langsung Level 1
-                  menggunakan kode akses uji coba bawaan di bawah ini.
+
+                <p className="text-sm sm:text-base font-medium text-neutral-900 leading-relaxed max-w-2xl">
+                  Daftar menggunakan Kode Akses Kelas Penuh dari Admin/Instruktur Anda, atau langsung
+                  coba Coding Studio Level 1 dan Media Belajar dengan kode uji coba bawaan berikut.
                 </p>
-                <div className="flex flex-wrap items-center gap-3 pt-2">
+
+                <div className="flex flex-wrap items-center gap-3 pt-1">
                   <div className="bg-white border-2 border-black shadow-[3px_3px_0px_0px_#000] px-4 py-2.5 flex items-center gap-3">
-                    <span className="text-xs font-bold text-neutral-600">Kode Uji Coba (Level 1):</span>
+                    <span className="text-xs font-bold text-neutral-600">Kode Uji Coba (L1):</span>
                     <code className="font-mono font-extrabold text-base tracking-wider">BELAJAR2026</code>
                     <button
                       type="button"
                       onClick={handleCopyTrialCode}
                       className="p-1.5 border-2 border-black bg-[#4ADE80] hover:bg-[#4ADE80]/80 cursor-pointer"
-                      title="Salin kode akses"
+                      title="Salin kode uji coba"
+                      aria-label="Salin kode uji coba"
                     >
                       {copiedCode ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
                     </button>
@@ -544,14 +826,14 @@ export const LandingPage: React.FC<Props> = ({ onGoLogin, onGoRegister }) => {
                 </div>
               </div>
 
-              <div className="lg:col-span-5 flex flex-col sm:flex-row lg:flex-col gap-3">
+              <div className="lg:col-span-5 flex flex-col gap-3">
                 <button
                   type="button"
                   onClick={() => {
                     soundEngine.playButtonClick();
                     onGoRegister();
                   }}
-                  className="neo-btn bg-black text-white px-6 py-4 text-base font-extrabold inline-flex items-center justify-center gap-2 cursor-pointer"
+                  className="neo-btn bg-black text-white px-6 py-4 text-sm sm:text-base font-extrabold inline-flex items-center justify-center gap-2 cursor-pointer"
                 >
                   Daftar Akun Siswa Sekarang
                   <ArrowRight className="w-5 h-5" />
@@ -563,7 +845,7 @@ export const LandingPage: React.FC<Props> = ({ onGoLogin, onGoRegister }) => {
                       soundEngine.playButtonClick();
                       onGoLogin('instructor');
                     }}
-                    className="neo-btn bg-white text-black px-4 py-3 text-sm font-bold cursor-pointer"
+                    className="neo-btn bg-white text-black px-4 py-3 text-xs sm:text-sm font-extrabold cursor-pointer"
                   >
                     Portal Instruktur
                   </button>
@@ -573,7 +855,7 @@ export const LandingPage: React.FC<Props> = ({ onGoLogin, onGoRegister }) => {
                       soundEngine.playButtonClick();
                       onGoLogin('admin');
                     }}
-                    className="neo-btn bg-[#38BDF8] text-black px-4 py-3 text-sm font-bold cursor-pointer"
+                    className="neo-btn bg-[#38BDF8] text-black px-4 py-3 text-xs sm:text-sm font-extrabold cursor-pointer"
                   >
                     Portal Admin
                   </button>
@@ -584,7 +866,7 @@ export const LandingPage: React.FC<Props> = ({ onGoLogin, onGoRegister }) => {
         </section>
       </main>
 
-      {/* FOOTER */}
+      {/* QUIET FOOTER */}
       <footer className="border-t-[3px] border-black bg-[#FFFDF7] py-8">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-sm font-bold">
           <div className="flex items-center gap-2">
@@ -599,6 +881,40 @@ export const LandingPage: React.FC<Props> = ({ onGoLogin, onGoRegister }) => {
           </p>
         </div>
       </footer>
+
+      {previewZoomOpen && !heroImgError && (
+        <div
+          className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4"
+          onClick={() => setPreviewZoomOpen(false)}
+        >
+          <div
+            className="neo-card bg-[#23272F] w-full max-w-6xl overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-4 py-3 bg-[#1D2129] border-b-2 border-black flex items-center justify-between gap-3 text-white">
+              <span className="font-display font-extrabold text-sm">
+                Pratinjau Penuh — CodeSpark Coding Studio
+              </span>
+              <button
+                type="button"
+                onClick={() => setPreviewZoomOpen(false)}
+                className="neo-btn bg-[#FFE600] text-black p-1.5 cursor-pointer"
+                aria-label="Tutup pratinjau penuh"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-2 bg-[#2C313A] max-h-[82vh] overflow-auto">
+              <img
+                src={HERO_STUDIO_IMAGE}
+                alt="Pratinjau penuh aplikasi CodeSpark Coding Studio"
+                referrerPolicy="no-referrer"
+                className="w-full h-auto block"
+              />
+            </div>
+          </div>
+        </div>
+      )}
 
       {moduleModalTier && (
         <ModuleGuideModal initialTier={moduleModalTier} onClose={() => setModuleModalTier(null)} />
