@@ -30,6 +30,7 @@
         "isActive": { "type": "boolean" },
         "isTrial": { "type": "boolean" },
         "includeAppMaker": { "type": "boolean" },
+        "includeGameMaker": { "type": "boolean" },
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["id", "code", "className", "createdByRole", "createdById", "createdByName", "ownerUid", "isActive", "createdAt"]
@@ -63,6 +64,8 @@
         "ownerUid": { "type": "string", "minLength": 1, "maxLength": 128 },
         "hasAppMakerAccess": { "type": "boolean" },
         "requestedAppMaker": { "type": "boolean" },
+        "hasGameMakerAccess": { "type": "boolean" },
+        "requestedGameMaker": { "type": "boolean" },
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["id", "name", "username", "passwordHash", "accessCode", "className", "instructorId", "instructorName", "instructorUid", "ownerUid", "createdAt"]
@@ -75,7 +78,7 @@
         "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
         "studentId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
         "levelId": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
-        "tier": { "type": "string", "enum": ["pemula", "menengah", "lanjutan", "app_maker"] },
+        "tier": { "type": "string", "enum": ["pemula", "menengah", "lanjutan", "app_maker", "game_maker"] },
         "stars": { "type": "integer" },
         "codeSubmitted": { "type": "string", "minLength": 1, "maxLength": 4000 },
         "language": { "type": "string", "enum": ["python", "javascript"] },
@@ -94,7 +97,7 @@
         "certificateNo": { "type": "string", "minLength": 5, "maxLength": 64 },
         "studentId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
         "studentName": { "type": "string", "minLength": 2, "maxLength": 100 },
-        "tierId": { "type": "string", "enum": ["pemula", "menengah", "lanjutan", "app_maker"] },
+        "tierId": { "type": "string", "enum": ["pemula", "menengah", "lanjutan", "app_maker", "game_maker"] },
         "tierName": { "type": "string", "minLength": 2, "maxLength": 100 },
         "instructorName": { "type": "string", "minLength": 2, "maxLength": 100 },
         "instructorUid": { "type": "string", "minLength": 1, "maxLength": 128 },

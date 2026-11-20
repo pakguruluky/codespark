@@ -19,6 +19,7 @@ import {
   AlertCircle,
   BookOpen,
   Layers,
+  Gamepad2,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -30,9 +31,14 @@ import {
   Tooltip,
 } from 'recharts';
 import type { AppSession, CertificateRecord, DataStoreSnapshot, TierId } from '../types';
-import { dataEngine, hasStudentAppMakerAccess } from '../services/dataEngine';
+import {
+  dataEngine,
+  hasStudentAppMakerAccess,
+  hasStudentGameMakerAccess,
+} from '../services/dataEngine';
 import { LEVELS } from '../data/levels';
 import { APP_MAKER_PROJECTS } from '../data/appMakerProjects';
+import { GAME_MAKER_PROJECTS } from '../data/gameMakerProjects';
 import { formatShortDate, generateAccessCode } from '../utils/crypto';
 import { CertificateView } from './CertificateView';
 import { ModuleGuideModal } from './ModuleGuideModal';
@@ -53,6 +59,7 @@ export const InstructorDashboard: React.FC<Props> = ({ session, store, onLogout 
   const [className, setClassName] = useState('');
   const [customCode, setCustomCode] = useState(() => generateAccessCode('CODE'));
   const [includeAppMaker, setIncludeAppMaker] = useState(false);
+  const [includeGameMaker, setIncludeGameMaker] = useState(false);
   const [creating, setCreating] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [formSuccess, setFormSuccess] = useState<string | null>(null);
@@ -115,12 +122,18 @@ export const InstructorDashboard: React.FC<Props> = ({ session, store, onLogout 
         createdById: session.id,
         createdByName: session.name,
         includeAppMaker,
+        includeGameMaker,
       });
+      const extraTags = [
+        created.includeAppMaker ? '+ App Maker' : null,
+        created.includeGameMaker ? '+ Game Maker' : null,
+      ].filter(Boolean);
       setFormSuccess(
-        `Kode akses "${created.code}" untuk kelas "${created.className}"${created.includeAppMaker ? ' (+ App Maker)' : ''} berhasil dibuat!`
+        `Kode akses "${created.code}" untuk kelas "${created.className}"${extraTags.length > 0 ? ` (${extraTags.join(' ')})` : ''} berhasil dibuat!`
       );
       setClassName('');
       setIncludeAppMaker(false);
+      setIncludeGameMaker(false);
       setCustomCode(generateAccessCode('CODE'));
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'Gagal membuat kode akses.');
@@ -468,6 +481,33 @@ export const InstructorDashboard: React.FC<Props> = ({ session, store, onLogout 
                 </button>
 
                 <button
+                  type="button"
+                  onClick={() => setIncludeGameMaker((v) => !v)}
+                  className={`w-full p-3 border-2 border-black text-left flex items-start gap-2.5 cursor-pointer ${
+                    includeGameMaker
+                      ? 'bg-[#38BDF8]/30 shadow-[2px_2px_0px_0px_#000]'
+                      : 'bg-white'
+                  }`}
+                >
+                  <span
+                    className={`w-5 h-5 mt-0.5 border-2 border-black flex items-center justify-center shrink-0 ${
+                      includeGameMaker ? 'bg-[#38BDF8]' : 'bg-white'
+                    }`}
+                  >
+                    {includeGameMaker && <Check className="w-3.5 h-3.5 stroke-[3]" />}
+                  </span>
+                  <div className="min-w-0">
+                    <div className="text-xs font-extrabold flex items-center gap-1.5">
+                      <Gamepad2 className="w-3.5 h-3.5" />
+                      Sertakan Akses Program Game Maker (5 Game)
+                    </div>
+                    <p className="text-[11px] text-neutral-600 mt-0.5">
+                      Siswa yang memakai kode ini otomatis mendapat akses 5 game Game Maker bertahap.
+                    </p>
+                  </div>
+                </button>
+
+                <button
                   type="submit"
                   disabled={creating}
                   className="neo-btn bg-[#4ADE80] w-full py-3 text-sm font-extrabold inline-flex items-center justify-center gap-2 cursor-pointer"
@@ -508,6 +548,11 @@ export const InstructorDashboard: React.FC<Props> = ({ session, store, onLogout 
                               {item.includeAppMaker && (
                                 <span className="text-xs font-extrabold px-2 py-0.5 border border-black bg-[#C084FC]">
                                   + App Maker
+                                </span>
+                              )}
+                              {item.includeGameMaker && (
+                                <span className="text-xs font-extrabold px-2 py-0.5 border border-black bg-[#38BDF8]">
+                                  + Game Maker
                                 </span>
                               )}
                             </div>
@@ -587,12 +632,16 @@ export const InstructorDashboard: React.FC<Props> = ({ session, store, onLogout 
                     <tbody className="divide-y-2 divide-black text-sm">
                       {myStudents.map((stu) => {
                         const stuAllProg = myProgress.filter((p) => p.studentId === stu.id);
-                        const stuProg = stuAllProg.filter((p) => p.tier !== 'app_maker');
+                        const stuProg = stuAllProg.filter(
+                          (p) => p.tier !== 'app_maker' && p.tier !== 'game_maker'
+                        );
                         const stuAppProg = stuAllProg.filter((p) => p.tier === 'app_maker');
+                        const stuGameProg = stuAllProg.filter((p) => p.tier === 'game_maker');
                         const stuStars = stuProg.reduce((a, b) => a + b.stars, 0);
                         const stuCerts = myCertificates.filter((c) => c.studentId === stu.id);
                         const pct = Math.round((stuProg.length / LEVELS.length) * 100);
                         const hasApp = hasStudentAppMakerAccess(stu, store.accessCodes);
+                        const hasGame = hasStudentGameMakerAccess(stu, store.accessCodes);
 
                         return (
                           <tr key={stu.id} className="bg-white hover:bg-[#FFFDF7]">
@@ -607,6 +656,11 @@ export const InstructorDashboard: React.FC<Props> = ({ session, store, onLogout 
                                 {hasApp && (
                                   <span className="px-1.5 py-0.5 bg-[#C084FC] border border-black text-[10px] font-extrabold">
                                     App Maker {stuAppProg.length}/{APP_MAKER_PROJECTS.length}
+                                  </span>
+                                )}
+                                {hasGame && (
+                                  <span className="px-1.5 py-0.5 bg-[#38BDF8] border border-black text-[10px] font-extrabold">
+                                    Game Maker {stuGameProg.length}/{GAME_MAKER_PROJECTS.length}
                                   </span>
                                 )}
                               </div>
@@ -639,11 +693,19 @@ export const InstructorDashboard: React.FC<Props> = ({ session, store, onLogout 
                                       type="button"
                                       onClick={() => setPreviewCert(c)}
                                       className={`px-2 py-1 text-xs font-extrabold border-2 border-black inline-flex items-center gap-1 cursor-pointer ${
-                                        c.tierId === 'app_maker' ? 'bg-[#FB7185]' : 'bg-[#C084FC]'
+                                        c.tierId === 'app_maker'
+                                          ? 'bg-[#FB7185]'
+                                          : c.tierId === 'game_maker'
+                                            ? 'bg-[#38BDF8]'
+                                            : 'bg-[#C084FC]'
                                       }`}
                                     >
                                       <Eye className="w-3 h-3" />
-                                      {c.tierId === 'app_maker' ? 'App Maker' : c.tierId}
+                                      {c.tierId === 'app_maker'
+                                        ? 'App Maker'
+                                        : c.tierId === 'game_maker'
+                                          ? 'Game Maker'
+                                          : c.tierId}
                                     </button>
                                   ))}
                                 </div>

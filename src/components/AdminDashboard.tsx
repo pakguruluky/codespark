@@ -53,20 +53,27 @@ import type {
   AppSession,
   CertificateRecord,
   DataStoreSnapshot,
+  GameMakerProjectId,
   ProgressRecord,
   ProgressTierId,
   TierId,
 } from '../types';
-import { dataEngine, hasStudentAppMakerAccess } from '../services/dataEngine';
+import {
+  dataEngine,
+  hasStudentAppMakerAccess,
+  hasStudentGameMakerAccess,
+} from '../services/dataEngine';
 import { CHARACTER_META, MascotPortrait, getCharacterForLevel } from './PandaMascot';
 import { LEVELS, TIERS, getLevelById, getLevelsByTier, getTierMeta } from '../data/levels';
 import { APP_MAKER_PROJECTS } from '../data/appMakerProjects';
+import { GAME_MAKER_PROJECTS } from '../data/gameMakerProjects';
 import { blocksToCode } from '../engine/interpreter';
 import { soundEngine } from '../engine/soundEngine';
 import { formatShortDate, formatWhatsAppUrl, generateAccessCode } from '../utils/crypto';
 import { CertificateView } from './CertificateView';
 import { CodingStudio } from './CodingStudio';
 import { AppMakerWorkspace } from './AppMakerWorkspace';
+import { GameMakerWorkspace } from './GameMakerWorkspace';
 import { ModuleGuideModal } from './ModuleGuideModal';
 
 interface Props {
@@ -98,6 +105,7 @@ export const AdminDashboard: React.FC<Props> = ({ session, store, onLogout }) =>
   const [codeValue, setCodeValue] = useState(() => generateAccessCode('SPARK'));
   const [codeIsTrial, setCodeIsTrial] = useState(false);
   const [codeIncludeAppMaker, setCodeIncludeAppMaker] = useState(false);
+  const [codeIncludeGameMaker, setCodeIncludeGameMaker] = useState(false);
   const [codeLoading, setCodeLoading] = useState(false);
   const [codeError, setCodeError] = useState<string | null>(null);
   const [codeSuccess, setCodeSuccess] = useState<string | null>(null);
@@ -125,17 +133,26 @@ export const AdminDashboard: React.FC<Props> = ({ session, store, onLogout }) =>
   const [previewCert, setPreviewCert] = useState<CertificateRecord | null>(null);
   const [moduleModalTier, setModuleModalTier] = useState<TierId | null>(null);
 
-  // Admin Full Materials & Unlocked Studio/App Maker Preview State
-  const [previewView, setPreviewView] = useState<'materials' | 'studio' | 'app_maker'>('materials');
+  // Admin Full Materials & Unlocked Studio/App Maker/Game Maker Preview State
+  const [previewView, setPreviewView] = useState<
+    'materials' | 'studio' | 'app_maker' | 'game_maker'
+  >('materials');
   const [previewLevelId, setPreviewLevelId] = useState<string>('p1');
   const [previewAppProjectId, setPreviewAppProjectId] = useState<AppMakerProjectId | null>(null);
+  const [previewGameProjectId, setPreviewGameProjectId] = useState<GameMakerProjectId | null>(null);
   const [previewTierFilter, setPreviewTierFilter] = useState<'ALL' | TierId>('ALL');
   const [previewStars, setPreviewStars] = useState<Record<string, 1 | 2 | 3>>({});
   const [previewAppRecords, setPreviewAppRecords] = useState<Record<string, ProgressRecord>>({});
+  const [previewGameRecords, setPreviewGameRecords] = useState<Record<string, ProgressRecord>>({});
 
   const previewAppMakerMap = useMemo(
     () => new Map<string, ProgressRecord>(Object.entries(previewAppRecords)),
     [previewAppRecords]
+  );
+
+  const previewGameMakerMap = useMemo(
+    () => new Map<string, ProgressRecord>(Object.entries(previewGameRecords)),
+    [previewGameRecords]
   );
 
   const previewLevel = getLevelById(previewLevelId) || LEVELS[0];
@@ -143,11 +160,18 @@ export const AdminDashboard: React.FC<Props> = ({ session, store, onLogout }) =>
   const previewNextLevel = LEVELS.find((l) => l.order === previewLevel.order + 1);
 
   const openSampleCertificate = (tierId: ProgressTierId) => {
-    const isApp = tierId === 'app_maker';
-    const title = isApp
-      ? 'App Maker: 5 Proyek Aplikasi Interaktif'
-      : getTierMeta(tierId).certificateTitle;
-    const codeTag = isApp ? 'APP' : tierId.slice(0, 3).toUpperCase();
+    const title =
+      tierId === 'app_maker'
+        ? 'App Maker: 5 Proyek Aplikasi Interaktif'
+        : tierId === 'game_maker'
+          ? 'Game Maker: 5 Proyek Game Interaktif'
+          : getTierMeta(tierId).certificateTitle;
+    const codeTag =
+      tierId === 'app_maker'
+        ? 'APP'
+        : tierId === 'game_maker'
+          ? 'GMK'
+          : tierId.slice(0, 3).toUpperCase();
     setPreviewCert({
       id: `preview_cert_${tierId}`,
       certificateNo: `CS-2026-${codeTag}-DEMO`,
@@ -178,9 +202,17 @@ export const AdminDashboard: React.FC<Props> = ({ session, store, onLogout }) =>
     setDrawerOpen(false);
   };
 
+  const openGameMakerInPreview = (projectId: GameMakerProjectId | null = null) => {
+    soundEngine.playButtonClick();
+    setPreviewGameProjectId(projectId);
+    setActiveTab('preview');
+    setPreviewView('game_maker');
+    setDrawerOpen(false);
+  };
+
   // ==================== ANALYTICS DATA ====================
 
-  // 1. Bar Chart: Progress per Tier (Pemula, Menengah, Lanjutan, App Maker)
+  // 1. Bar Chart: Progress per Tier (Pemula, Menengah, Lanjutan, App Maker, Game Maker)
   const tierBarData = useMemo(() => {
     const studioRows = TIERS.map((tier) => {
       const tierProg = store.progress.filter((p) => p.tier === tier.id);
@@ -199,6 +231,13 @@ export const AdminDashboard: React.FC<Props> = ({ session, store, onLogout }) =>
       penyelesaianLevel: appProg.length,
       siswaAktif: new Set(appProg.map((p) => p.studentId)).size,
       sertifikat: store.certificates.filter((c) => c.tierId === 'app_maker').length,
+    });
+    const gameProg = store.progress.filter((p) => p.tier === 'game_maker');
+    studioRows.push({
+      name: 'Game Maker',
+      penyelesaianLevel: gameProg.length,
+      siswaAktif: new Set(gameProg.map((p) => p.studentId)).size,
+      sertifikat: store.certificates.filter((c) => c.tierId === 'game_maker').length,
     });
     return studioRows;
   }, [store.progress, store.certificates]);
@@ -311,13 +350,19 @@ export const AdminDashboard: React.FC<Props> = ({ session, store, onLogout }) =>
         createdByName: 'Admin CodeSpark',
         isTrial: codeIsTrial,
         includeAppMaker: codeIncludeAppMaker,
+        includeGameMaker: codeIncludeGameMaker,
       });
+      const extraTags = [
+        created.includeAppMaker ? ' + App Maker' : '',
+        created.includeGameMaker ? ' + Game Maker' : '',
+      ].join('');
       setCodeSuccess(
-        `Kode akses "${created.code}" (${created.isTrial ? 'Uji Coba Level 1' : 'Akses Penuh L1–L9'}${created.includeAppMaker ? ' + App Maker' : ''}) untuk kelas "${created.className}" aktif!`
+        `Kode akses "${created.code}" (${created.isTrial ? 'Uji Coba Level 1' : 'Akses Penuh L1–L9'}${extraTags}) untuk kelas "${created.className}" aktif!`
       );
       setCodeClassName('');
       setCodeIsTrial(false);
       setCodeIncludeAppMaker(false);
+      setCodeIncludeGameMaker(false);
       setCodeValue(generateAccessCode('SPARK'));
     } catch (err) {
       setCodeError(err instanceof Error ? err.message : 'Gagal membuat kode akses.');
@@ -358,7 +403,7 @@ export const AdminDashboard: React.FC<Props> = ({ session, store, onLogout }) =>
     { id: 'instructors', label: `Instruktur (${store.instructors.length})`, shortLabel: 'Instruktur', icon: Users },
     { id: 'codes', label: `Kode Akses (${store.accessCodes.length})`, shortLabel: 'Kode', icon: KeyRound },
     { id: 'students', label: `Semua Siswa (${store.students.length})`, shortLabel: 'Siswa', icon: GraduationCap },
-    { id: 'preview', label: 'Materi, Studio & App Maker', shortLabel: 'Materi', icon: Gamepad2 },
+    { id: 'preview', label: 'Materi, Studio & Maker', shortLabel: 'Materi', icon: Gamepad2 },
     { id: 'settings', label: 'Pengaturan', shortLabel: 'Setting', icon: Settings },
   ];
 
@@ -1057,9 +1102,9 @@ export const AdminDashboard: React.FC<Props> = ({ session, store, onLogout }) =>
                   </div>
                 </div>
 
-                {/* App Maker Access Inclusion Toggle */}
-                <div>
-                  <span className="block text-sm font-bold mb-1.5">Program Tambahan</span>
+                {/* App Maker & Game Maker Access Inclusion Toggles */}
+                <div className="space-y-2">
+                  <span className="block text-sm font-bold">Program Tambahan</span>
                   <button
                     type="button"
                     onClick={() => setCodeIncludeAppMaker((v) => !v)}
@@ -1083,6 +1128,33 @@ export const AdminDashboard: React.FC<Props> = ({ session, store, onLogout }) =>
                       </div>
                       <p className="text-[11px] text-neutral-600 mt-0.5">
                         Siswa yang mendaftar/upgrade memakai kode ini otomatis mendapat akses Photogram AI → Weather App.
+                      </p>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setCodeIncludeGameMaker((v) => !v)}
+                    className={`w-full p-3 border-2 border-black text-left flex items-start gap-2.5 cursor-pointer ${
+                      codeIncludeGameMaker
+                        ? 'bg-[#38BDF8]/30 shadow-[2px_2px_0px_0px_#000]'
+                        : 'bg-white'
+                    }`}
+                  >
+                    <span
+                      className={`w-5 h-5 mt-0.5 border-2 border-black flex items-center justify-center shrink-0 ${
+                        codeIncludeGameMaker ? 'bg-[#38BDF8]' : 'bg-white'
+                      }`}
+                    >
+                      {codeIncludeGameMaker && <Check className="w-3.5 h-3.5 stroke-[3]" />}
+                    </span>
+                    <div className="min-w-0">
+                      <div className="text-xs font-extrabold flex items-center gap-1.5">
+                        <Gamepad2 className="w-3.5 h-3.5" />
+                        Sertakan Akses Program Game Maker (5 Game)
+                      </div>
+                      <p className="text-[11px] text-neutral-600 mt-0.5">
+                        Siswa yang mendaftar/upgrade memakai kode ini otomatis mendapat akses Image Match → Space Mission.
                       </p>
                     </div>
                   </button>
@@ -1134,6 +1206,11 @@ export const AdminDashboard: React.FC<Props> = ({ session, store, onLogout }) =>
                                 + App Maker
                               </span>
                             )}
+                            {item.includeGameMaker && (
+                              <span className="text-xs font-extrabold px-2 py-0.5 border border-black bg-[#38BDF8]">
+                                + Game Maker
+                              </span>
+                            )}
                             <span className="text-xs font-bold text-neutral-600">
                               · oleh {item.createdByName} ({item.createdByRole})
                             </span>
@@ -1168,7 +1245,20 @@ export const AdminDashboard: React.FC<Props> = ({ session, store, onLogout }) =>
                             title="Buka atau tutup akses Program App Maker untuk kode ini"
                           >
                             <Layers className="w-3.5 h-3.5" />
-                            {item.includeAppMaker ? 'App Maker: ON' : '+ App Maker'}
+                            {item.includeAppMaker ? 'App: ON' : '+ App'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              void dataEngine.toggleAccessCodeGameMaker(item.id, !item.includeGameMaker)
+                            }
+                            className={`neo-btn px-3 py-1.5 text-xs font-extrabold inline-flex items-center gap-1 cursor-pointer ${
+                              item.includeGameMaker ? 'bg-[#38BDF8]' : 'bg-white'
+                            }`}
+                            title="Buka atau tutup akses Program Game Maker untuk kode ini"
+                          >
+                            <Gamepad2 className="w-3.5 h-3.5" />
+                            {item.includeGameMaker ? 'Game: ON' : '+ Game'}
                           </button>
                           <button
                             type="button"
@@ -1246,7 +1336,7 @@ export const AdminDashboard: React.FC<Props> = ({ session, store, onLogout }) =>
                         <th className="p-3 border-r-2 border-black">Siswa</th>
                         <th className="p-3 border-r-2 border-black">Instruktur &amp; Kelas</th>
                         <th className="p-3 border-r-2 border-black">Studio (L1–L9)</th>
-                        <th className="p-3 border-r-2 border-black">Akses Program App Maker</th>
+                        <th className="p-3 border-r-2 border-black">Akses App &amp; Game Maker</th>
                         <th className="p-3 border-r-2 border-black">Bintang</th>
                         <th className="p-3">Sertifikat</th>
                       </tr>
@@ -1254,12 +1344,16 @@ export const AdminDashboard: React.FC<Props> = ({ session, store, onLogout }) =>
                     <tbody className="divide-y-2 divide-black text-sm">
                       {filteredStudents.map((stu) => {
                         const stuAllProg = store.progress.filter((p) => p.studentId === stu.id);
-                        const stuProg = stuAllProg.filter((p) => p.tier !== 'app_maker');
+                        const stuProg = stuAllProg.filter(
+                          (p) => p.tier !== 'app_maker' && p.tier !== 'game_maker'
+                        );
                         const stuAppProg = stuAllProg.filter((p) => p.tier === 'app_maker');
+                        const stuGameProg = stuAllProg.filter((p) => p.tier === 'game_maker');
                         const stuStars = stuProg.reduce((a, b) => a + b.stars, 0);
                         const stuCerts = store.certificates.filter((c) => c.studentId === stu.id);
                         const pct = Math.round((stuProg.length / LEVELS.length) * 100);
                         const hasAppMaker = hasStudentAppMakerAccess(stu, store.accessCodes);
+                        const hasGameMaker = hasStudentGameMakerAccess(stu, store.accessCodes);
 
                         return (
                           <tr key={stu.id} className="bg-white hover:bg-[#FFFDF7]">
@@ -1285,7 +1379,8 @@ export const AdminDashboard: React.FC<Props> = ({ session, store, onLogout }) =>
                               </div>
                             </td>
                             <td className="p-3 border-r-2 border-black">
-                              <div className="flex flex-col gap-1.5">
+                              <div className="space-y-2">
+                                {/* App Maker Row */}
                                 <div className="flex flex-wrap items-center gap-1.5">
                                   <span
                                     className={`px-2 py-0.5 border border-black text-[11px] font-extrabold inline-flex items-center gap-1 ${
@@ -1297,37 +1392,57 @@ export const AdminDashboard: React.FC<Props> = ({ session, store, onLogout }) =>
                                     ) : (
                                       <Lock className="w-3 h-3" />
                                     )}
-                                    {hasAppMaker
-                                      ? `Aktif (${stuAppProg.length}/${APP_MAKER_PROJECTS.length})`
-                                      : 'Terkunci'}
+                                    App: {hasAppMaker ? `${stuAppProg.length}/${APP_MAKER_PROJECTS.length}` : 'Terkunci'}
                                   </span>
                                   {stu.requestedAppMaker && !hasAppMaker && (
                                     <span className="px-1.5 py-0.5 bg-[#FFE600] border border-black text-[10px] font-extrabold">
                                       Diminta Siswa
                                     </span>
                                   )}
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      void dataEngine.setStudentAppMakerAccess(stu.id, !hasAppMaker)
+                                    }
+                                    className={`neo-btn px-2 py-0.5 text-[10px] font-extrabold inline-flex items-center gap-1 cursor-pointer ${
+                                      hasAppMaker ? 'bg-white' : 'bg-[#4ADE80]'
+                                    }`}
+                                  >
+                                    {hasAppMaker ? 'Kunci App' : 'Buka App'}
+                                  </button>
                                 </div>
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    void dataEngine.setStudentAppMakerAccess(stu.id, !hasAppMaker)
-                                  }
-                                  className={`neo-btn px-2.5 py-1 text-[11px] font-extrabold inline-flex items-center gap-1 self-start cursor-pointer ${
-                                    hasAppMaker ? 'bg-white' : 'bg-[#4ADE80]'
-                                  }`}
-                                >
-                                  {hasAppMaker ? (
-                                    <>
-                                      <Lock className="w-3 h-3" />
-                                      Kunci App Maker
-                                    </>
-                                  ) : (
-                                    <>
+
+                                {/* Game Maker Row */}
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                  <span
+                                    className={`px-2 py-0.5 border border-black text-[11px] font-extrabold inline-flex items-center gap-1 ${
+                                      hasGameMaker ? 'bg-[#38BDF8]' : 'bg-neutral-200 text-neutral-700'
+                                    }`}
+                                  >
+                                    {hasGameMaker ? (
                                       <Unlock className="w-3 h-3" />
-                                      Buka App Maker
-                                    </>
+                                    ) : (
+                                      <Lock className="w-3 h-3" />
+                                    )}
+                                    Game: {hasGameMaker ? `${stuGameProg.length}/${GAME_MAKER_PROJECTS.length}` : 'Terkunci'}
+                                  </span>
+                                  {stu.requestedGameMaker && !hasGameMaker && (
+                                    <span className="px-1.5 py-0.5 bg-[#FFE600] border border-black text-[10px] font-extrabold">
+                                      Diminta Siswa
+                                    </span>
                                   )}
-                                </button>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      void dataEngine.setStudentGameMakerAccess(stu.id, !hasGameMaker)
+                                    }
+                                    className={`neo-btn px-2 py-0.5 text-[10px] font-extrabold inline-flex items-center gap-1 cursor-pointer ${
+                                      hasGameMaker ? 'bg-white' : 'bg-[#4ADE80]'
+                                    }`}
+                                  >
+                                    {hasGameMaker ? 'Kunci Game' : 'Buka Game'}
+                                  </button>
+                                </div>
                               </div>
                             </td>
                             <td className="p-3 border-r-2 border-black font-mono font-extrabold tabular-nums">
@@ -1347,11 +1462,19 @@ export const AdminDashboard: React.FC<Props> = ({ session, store, onLogout }) =>
                                       type="button"
                                       onClick={() => setPreviewCert(c)}
                                       className={`px-2 py-1 text-xs font-extrabold border-2 border-black inline-flex items-center gap-1 cursor-pointer ${
-                                        c.tierId === 'app_maker' ? 'bg-[#FB7185]' : 'bg-[#C084FC]'
+                                        c.tierId === 'app_maker'
+                                          ? 'bg-[#FB7185]'
+                                          : c.tierId === 'game_maker'
+                                            ? 'bg-[#38BDF8]'
+                                            : 'bg-[#C084FC]'
                                       }`}
                                     >
                                       <Eye className="w-3 h-3" />
-                                      {c.tierId === 'app_maker' ? 'App Maker' : c.tierId}
+                                      {c.tierId === 'app_maker'
+                                        ? 'App Maker'
+                                        : c.tierId === 'game_maker'
+                                          ? 'Game Maker'
+                                          : c.tierId}
                                     </button>
                                   ))}
                                 </div>
@@ -1558,6 +1681,62 @@ export const AdminDashboard: React.FC<Props> = ({ session, store, onLogout }) =>
             </div>
           )}
 
+          {/* ADMIN UNLOCKED GAME MAKER PREVIEW VIEW */}
+          {activeTab === 'preview' && previewView === 'game_maker' && (
+            <div className="space-y-4">
+              <div className="neo-card bg-[#38BDF8]/30 p-4 flex flex-wrap items-center justify-between gap-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      soundEngine.playButtonClick();
+                      setPreviewView('materials');
+                    }}
+                    className="neo-btn bg-white px-3.5 py-2 text-xs font-extrabold inline-flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <ArrowLeft className="w-4 h-4" />
+                    Kembali ke Semua Materi
+                  </button>
+                  <span className="text-xs font-extrabold px-2.5 py-1 bg-[#FFE600] border-2 border-black">
+                    Pratinjau Admin · Seluruh 5 Game Interaktif Terbuka
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => openSampleCertificate('game_maker')}
+                  className="neo-btn bg-[#FFE600] px-3.5 py-2 text-xs font-extrabold inline-flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Award className="w-4 h-4" />
+                  Pratinjau Sertifikat Game Maker
+                </button>
+              </div>
+
+              <GameMakerWorkspace
+                hasAccess={true}
+                isAdminPreview={true}
+                initialProjectId={previewGameProjectId}
+                completedProgressMap={previewGameMakerMap}
+                onOpenCertificates={() => openSampleCertificate('game_maker')}
+                onProjectComplete={async ({ projectId, stars, codeSubmitted }) => {
+                  const rec: ProgressRecord = {
+                    id: `admin_preview_${projectId}`,
+                    studentId: 'admin_preview',
+                    levelId: projectId,
+                    tier: 'game_maker',
+                    stars,
+                    codeSubmitted,
+                    language: 'javascript',
+                    ownerUid: 'admin',
+                    instructorUid: 'admin',
+                    completedAt: new Date().toISOString(),
+                  };
+                  setPreviewGameRecords((prev) => ({ ...prev, [projectId]: rec }));
+                  return { newCertificate: null };
+                }}
+              />
+            </div>
+          )}
+
           {/* ALL MATERIALS & UNLOCKED STUDENT STUDIO PREVIEW TAB */}
           {activeTab === 'preview' && previewView === 'materials' && (
             <div className="space-y-6">
@@ -1565,14 +1744,14 @@ export const AdminDashboard: React.FC<Props> = ({ session, store, onLogout }) =>
                 <div className="space-y-1.5">
                   <div className="inline-flex items-center gap-1.5 bg-white border-2 border-black px-2.5 py-0.5 text-xs font-extrabold">
                     <Unlock className="w-3.5 h-3.5" />
-                    Akses Penuh Administrator · Seluruh 9 Level Studio &amp; 5 Proyek App Maker Terbuka
+                    Akses Penuh Administrator · 9 Level Studio, 5 Proyek App Maker &amp; 5 Game Maker Terbuka
                   </div>
                   <h2 className="font-display text-2xl sm:text-3xl font-extrabold">
-                    Seluruh Materi Kurikulum, Studio &amp; App Maker
+                    Seluruh Materi Kurikulum, Studio, App Maker &amp; Game Maker
                   </h2>
                   <p className="text-xs sm:text-sm font-semibold text-neutral-900 max-w-2xl leading-relaxed">
                     Tinjau seluruh materi, misi, petunjuk karakter (Panda, Beruang, Koala), pratinjau sertifikat, dan uji langsung
-                    Coding Studio (L1–L9) maupun 5 proyek App Maker tanpa terkunci.
+                    Coding Studio (L1–L9), 5 proyek App Maker, maupun 5 game interaktif Game Maker tanpa terkunci.
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2 shrink-0">
@@ -1581,7 +1760,7 @@ export const AdminDashboard: React.FC<Props> = ({ session, store, onLogout }) =>
                     onClick={() => openLevelInPreviewStudio(previewLevelId)}
                     className="neo-btn bg-black text-white px-4 py-3 text-xs sm:text-sm font-extrabold inline-flex items-center justify-center gap-2 cursor-pointer"
                   >
-                    <Gamepad2 className="w-4 h-4" />
+                    <Play className="w-4 h-4 fill-white" />
                     Coding Studio (L{previewLevel.order})
                   </button>
                   <button
@@ -1591,6 +1770,14 @@ export const AdminDashboard: React.FC<Props> = ({ session, store, onLogout }) =>
                   >
                     <Layers className="w-4 h-4" />
                     App Maker (5 Proyek)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => openGameMakerInPreview(null)}
+                    className="neo-btn bg-[#38BDF8] px-4 py-3 text-xs sm:text-sm font-extrabold inline-flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <Gamepad2 className="w-4 h-4" />
+                    Game Maker (5 Game)
                   </button>
                 </div>
               </div>
@@ -1644,6 +1831,61 @@ export const AdminDashboard: React.FC<Props> = ({ session, store, onLogout }) =>
                       >
                         <Play className="w-3.5 h-3.5 fill-black" />
                         Uji Proyek 0{proj.order}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </section>
+
+              {/* Game Maker 5 Projects Preview Section */}
+              <section className="space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-3 pb-2 border-b-[3px] border-black">
+                  <div>
+                    <h3 className="font-display text-xl sm:text-2xl font-extrabold flex items-center gap-2">
+                      <Gamepad2 className="w-5 h-5 shrink-0" />
+                      Program Panduan Game Maker (5 Game Interaktif — Semua Terbuka)
+                    </h3>
+                    <p className="text-xs sm:text-sm text-neutral-700 mt-0.5">
+                      Image Match, Memory Card, Color Puzzle, Save the Polar Bear &amp; Space Mission. Di siswa dibuka bertahap jika akses aktif.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => openSampleCertificate('game_maker')}
+                    className="neo-btn bg-[#FFE600] px-3.5 py-2 text-xs font-extrabold inline-flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Award className="w-4 h-4" />
+                    Pratinjau Sertifikat Game Maker
+                  </button>
+                </div>
+
+                <div className="grid sm:grid-cols-2 xl:grid-cols-5 gap-4">
+                  {GAME_MAKER_PROJECTS.map((proj) => (
+                    <div
+                      key={proj.id}
+                      className="neo-card bg-white p-4 flex flex-col justify-between gap-3"
+                    >
+                      <div className="space-y-2">
+                        <span
+                          className="inline-block px-2 py-0.5 border-2 border-black font-mono text-[11px] font-extrabold"
+                          style={{ backgroundColor: proj.accentColor }}
+                        >
+                          Game 0{proj.order} · Terbuka
+                        </span>
+                        <h4 className="font-display text-base font-extrabold leading-tight">
+                          {proj.title}
+                        </h4>
+                        <p className="text-[11px] text-neutral-700 leading-relaxed">
+                          {proj.subtitle}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => openGameMakerInPreview(proj.id)}
+                        className="neo-btn bg-[#38BDF8] w-full py-2 px-2.5 text-xs font-extrabold inline-flex items-center justify-center gap-1 cursor-pointer"
+                      >
+                        <Play className="w-3.5 h-3.5 fill-black" />
+                        Uji Game 0{proj.order}
                       </button>
                     </div>
                   ))}

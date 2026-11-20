@@ -50,7 +50,7 @@ service cloud.firestore {
 
     function isValidAccessCode(data) {
       return data.keys().hasAll(['id', 'code', 'className', 'createdByRole', 'createdById', 'createdByName', 'ownerUid', 'isActive', 'createdAt'])
-        && data.keys().hasOnly(['id', 'code', 'className', 'createdByRole', 'createdById', 'createdByName', 'ownerUid', 'isActive', 'isTrial', 'includeAppMaker', 'createdAt'])
+        && data.keys().hasOnly(['id', 'code', 'className', 'createdByRole', 'createdById', 'createdByName', 'ownerUid', 'isActive', 'isTrial', 'includeAppMaker', 'includeGameMaker', 'createdAt'])
         && isValidId(data.id)
         && data.code is string && data.code.size() >= 3 && data.code.size() <= 32 && data.code.matches('^[A-Z0-9_\\-]+$')
         && data.className is string && data.className.size() >= 2 && data.className.size() <= 100
@@ -61,6 +61,7 @@ service cloud.firestore {
         && data.isActive is bool
         && (!('isTrial' in data) || data.isTrial is bool)
         && (!('includeAppMaker' in data) || data.includeAppMaker is bool)
+        && (!('includeGameMaker' in data) || data.includeGameMaker is bool)
         && data.createdAt is timestamp;
     }
 
@@ -75,7 +76,7 @@ service cloud.firestore {
 
     function isValidStudent(data) {
       return data.keys().hasAll(['id', 'name', 'username', 'passwordHash', 'accessCode', 'className', 'instructorId', 'instructorName', 'instructorUid', 'ownerUid', 'createdAt'])
-        && data.keys().hasOnly(['id', 'name', 'username', 'passwordHash', 'accessCode', 'className', 'instructorId', 'instructorName', 'instructorUid', 'ownerUid', 'hasAppMakerAccess', 'requestedAppMaker', 'createdAt'])
+        && data.keys().hasOnly(['id', 'name', 'username', 'passwordHash', 'accessCode', 'className', 'instructorId', 'instructorName', 'instructorUid', 'ownerUid', 'hasAppMakerAccess', 'requestedAppMaker', 'hasGameMakerAccess', 'requestedGameMaker', 'createdAt'])
         && isValidId(data.id)
         && data.name is string && data.name.size() >= 2 && data.name.size() <= 100
         && data.username is string && data.username.size() >= 3 && data.username.size() <= 50 && data.username.matches('^[a-zA-Z0-9_.\\-]+$')
@@ -88,6 +89,8 @@ service cloud.firestore {
         && data.ownerUid is string && data.ownerUid.size() >= 1 && data.ownerUid.size() <= 128
         && (!('hasAppMakerAccess' in data) || data.hasAppMakerAccess is bool)
         && (!('requestedAppMaker' in data) || data.requestedAppMaker is bool)
+        && (!('hasGameMakerAccess' in data) || data.hasGameMakerAccess is bool)
+        && (!('requestedGameMaker' in data) || data.requestedGameMaker is bool)
         && data.createdAt is timestamp;
     }
 
@@ -97,7 +100,7 @@ service cloud.firestore {
         && isValidId(data.id)
         && isValidId(data.studentId)
         && isValidId(data.levelId)
-        && data.tier is string && data.tier in ['pemula', 'menengah', 'lanjutan', 'app_maker']
+        && data.tier is string && data.tier in ['pemula', 'menengah', 'lanjutan', 'app_maker', 'game_maker']
         && data.stars is int && data.stars >= 1 && data.stars <= 3
         && data.codeSubmitted is string && data.codeSubmitted.size() >= 1 && data.codeSubmitted.size() <= 4000
         && data.language is string && data.language in ['python', 'javascript']
@@ -113,7 +116,7 @@ service cloud.firestore {
         && data.certificateNo is string && data.certificateNo.size() >= 5 && data.certificateNo.size() <= 64
         && isValidId(data.studentId)
         && data.studentName is string && data.studentName.size() >= 2 && data.studentName.size() <= 100
-        && data.tierId is string && data.tierId in ['pemula', 'menengah', 'lanjutan', 'app_maker']
+        && data.tierId is string && data.tierId in ['pemula', 'menengah', 'lanjutan', 'app_maker', 'game_maker']
         && data.tierName is string && data.tierName.size() >= 2 && data.tierName.size() <= 100
         && data.instructorName is string && data.instructorName.size() >= 2 && data.instructorName.size() <= 100
         && data.instructorUid is string && data.instructorUid.size() >= 1 && data.instructorUid.size() <= 128
@@ -186,8 +189,8 @@ service cloud.firestore {
         && incoming().createdById == existing().createdById
         && incoming().createdByRole == existing().createdByRole
         && (
-          (isAdmin() && incoming().diff(existing()).affectedKeys().hasOnly(['isActive', 'className', 'isTrial', 'includeAppMaker'])) ||
-          (existing().ownerUid == request.auth.uid && incoming().diff(existing()).affectedKeys().hasOnly(['isActive', 'className', 'includeAppMaker']))
+          (isAdmin() && incoming().diff(existing()).affectedKeys().hasOnly(['isActive', 'className', 'isTrial', 'includeAppMaker', 'includeGameMaker'])) ||
+          (existing().ownerUid == request.auth.uid && incoming().diff(existing()).affectedKeys().hasOnly(['isActive', 'className', 'includeAppMaker', 'includeGameMaker']))
         );
       allow delete: if isVerified() && isValidId(codeId) && (existing().ownerUid == request.auth.uid || isAdmin());
     }
@@ -214,9 +217,9 @@ service cloud.firestore {
         && incoming().ownerUid == existing().ownerUid
         && incoming().createdAt == existing().createdAt
         && (
-          (isAdmin() && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'className', 'instructorName', 'accessCode', 'instructorId', 'instructorUid', 'hasAppMakerAccess', 'requestedAppMaker'])) ||
+          (isAdmin() && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'className', 'instructorName', 'accessCode', 'instructorId', 'instructorUid', 'hasAppMakerAccess', 'requestedAppMaker', 'hasGameMakerAccess', 'requestedGameMaker'])) ||
           (existing().ownerUid == request.auth.uid
-            && incoming().diff(existing()).affectedKeys().hasOnly(['accessCode', 'className', 'instructorId', 'instructorName', 'instructorUid', 'hasAppMakerAccess'])
+            && incoming().diff(existing()).affectedKeys().hasOnly(['accessCode', 'className', 'instructorId', 'instructorName', 'instructorUid', 'hasAppMakerAccess', 'hasGameMakerAccess'])
             && exists(/databases/$(database)/documents/access_codes/$(incoming().accessCode))
             && get(/databases/$(database)/documents/access_codes/$(incoming().accessCode)).data.isActive == true
             && get(/databases/$(database)/documents/access_codes/$(incoming().accessCode)).data.className == incoming().className) ||

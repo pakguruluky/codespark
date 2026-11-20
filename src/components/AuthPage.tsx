@@ -15,6 +15,7 @@ import {
   Check,
   Code2,
   Layers,
+  Gamepad2,
 } from 'lucide-react';
 import { dataEngine } from '../services/dataEngine';
 import { connectFirebaseWithGoogle } from '../lib/firebase';
@@ -49,6 +50,7 @@ export const AuthPage: React.FC<Props> = ({
   const [regPassword, setRegPassword] = useState('');
   const [regCode, setRegCode] = useState('');
   const [regWantAppMaker, setRegWantAppMaker] = useState(false);
+  const [regWantGameMaker, setRegWantGameMaker] = useState(false);
   const [showRegPass, setShowRegPass] = useState(false);
 
   const [loading, setLoading] = useState(false);
@@ -102,6 +104,8 @@ export const AuthPage: React.FC<Props> = ({
         accessCode: student.accessCode,
         hasAppMakerAccess: student.hasAppMakerAccess,
         requestedAppMaker: student.requestedAppMaker,
+        hasGameMakerAccess: student.hasGameMakerAccess,
+        requestedGameMaker: student.requestedGameMaker,
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Gagal masuk ke sistem.');
@@ -121,6 +125,7 @@ export const AuthPage: React.FC<Props> = ({
         password: regPassword,
         accessCode: regCode,
         requestedAppMaker: regWantAppMaker,
+        requestedGameMaker: regWantGameMaker,
       });
       onAuthenticated({
         role: 'student',
@@ -134,6 +139,8 @@ export const AuthPage: React.FC<Props> = ({
         accessCode: student.accessCode,
         hasAppMakerAccess: student.hasAppMakerAccess,
         requestedAppMaker: student.requestedAppMaker,
+        hasGameMakerAccess: student.hasGameMakerAccess,
+        requestedGameMaker: student.requestedGameMaker,
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Pendaftaran siswa gagal.');
@@ -468,6 +475,37 @@ export const AuthPage: React.FC<Props> = ({
                       </div>
                       <p className="text-[11px] text-neutral-700 mt-0.5 leading-snug">
                         Proyek bertahap: Photogram AI, Todo App, Simple Calculator, Color Generatif &amp; Weather App. Terbuka lewat Kode Akses App Maker atau aktivasi Admin.
+                      </p>
+                    </div>
+                  </button>
+
+                  {/* Optional Game Maker */}
+                  <button
+                    type="button"
+                    onClick={() => setRegWantGameMaker((v) => !v)}
+                    className={`w-full text-left p-3 border-2 border-black flex items-start gap-2.5 cursor-pointer transition-colors ${
+                      regWantGameMaker
+                        ? 'bg-[#38BDF8]/25 shadow-[3px_3px_0px_0px_#000]'
+                        : 'bg-white hover:bg-[#FFFDF7]'
+                    }`}
+                  >
+                    <span
+                      className={`w-5 h-5 mt-0.5 border-2 border-black flex items-center justify-center shrink-0 ${
+                        regWantGameMaker ? 'bg-[#38BDF8]' : 'bg-white'
+                      }`}
+                    >
+                      {regWantGameMaker && <Check className="w-3.5 h-3.5 stroke-[3]" />}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <Gamepad2 className="w-3.5 h-3.5 shrink-0" />
+                        <span className="font-display font-extrabold text-sm">Game Maker</span>
+                        <span className="px-1.5 py-0.5 bg-[#FFE600] border border-black text-[10px] font-extrabold">
+                          OPSIONAL · 5 GAME
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-neutral-700 mt-0.5 leading-snug">
+                        Proyek game bertahap: Image Match, Memory Card, Color Puzzle, Save the Polar Bear &amp; Space Mission. Terbuka lewat Kode Akses Game Maker atau aktivasi Admin.
                       </p>
                     </div>
                   </button>

@@ -2,9 +2,9 @@ export type UserRole = 'student' | 'instructor' | 'admin';
 
 export type TierId = 'pemula' | 'menengah' | 'lanjutan';
 
-export type ProgressTierId = TierId | 'app_maker';
+export type ProgressTierId = TierId | 'app_maker' | 'game_maker';
 
-export type ProgramId = 'studio' | 'app_maker';
+export type ProgramId = 'studio' | 'app_maker' | 'game_maker';
 
 export type AppMakerProjectId =
   | 'app_photogram'
@@ -12,6 +12,13 @@ export type AppMakerProjectId =
   | 'app_calculator'
   | 'app_color'
   | 'app_weather';
+
+export type GameMakerProjectId =
+  | 'game_image_match'
+  | 'game_memory_card'
+  | 'game_color_puzzle'
+  | 'game_save_polar_bear'
+  | 'game_space_mission';
 
 export type CodeLanguage = 'python' | 'javascript';
 
@@ -38,6 +45,7 @@ export interface AccessCode {
   isActive: boolean;
   isTrial?: boolean;
   includeAppMaker?: boolean;
+  includeGameMaker?: boolean;
   createdAt: string;
 }
 
@@ -61,6 +69,8 @@ export interface Student {
   ownerUid: string;
   hasAppMakerAccess?: boolean;
   requestedAppMaker?: boolean;
+  hasGameMakerAccess?: boolean;
+  requestedGameMaker?: boolean;
   createdAt: string;
 }
 
@@ -103,6 +113,8 @@ export interface AppSession {
   specialty?: string;
   hasAppMakerAccess?: boolean;
   requestedAppMaker?: boolean;
+  hasGameMakerAccess?: boolean;
+  requestedGameMaker?: boolean;
 }
 
 export interface GridCoord {
