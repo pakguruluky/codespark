@@ -231,6 +231,39 @@ export function drawSourceCover(
 
 // ===================== MEDIAPIPE REAL ML FACE LANDMARKER =====================
 
+let mediaPipeConsoleFilterInstalled = false;
+
+const HARMLESS_MEDIAPIPE_LOG_PATTERNS = [
+  /INFO:\s*Created TensorFlow Lite/i,
+  /XNNPACK delegate/i,
+  /Feedback manager requires a model with a single signature/i,
+  /Graph successfully started running/i,
+  /OpenGL error checking/i,
+  /GL version:/i,
+  /absl::InitializeLog/i,
+  /^[IW]\d{4}\s+\d{2}:\d{2}:\d{2}\.\d+/,
+];
+
+function installMediaPipeConsoleFilter() {
+  if (mediaPipeConsoleFilterInstalled || typeof console === 'undefined') return;
+  mediaPipeConsoleFilterInstalled = true;
+
+  const originalError = console.error.bind(console);
+  console.error = (...args: unknown[]) => {
+    const combined = args
+      .map((a) => (typeof a === 'string' ? a : a instanceof Error ? a.message : ''))
+      .join(' ')
+      .trim();
+
+    if (combined && HARMLESS_MEDIAPIPE_LOG_PATTERNS.some((re) => re.test(combined))) {
+      // Harmless Emscripten C++ stderr info log from MediaPipe/TFLite WASM
+      return;
+    }
+
+    originalError(...args);
+  };
+}
+
 class MediaPipeFaceEngine {
   private videoLandmarker: FaceLandmarker | null = null;
   private imageLandmarker: FaceLandmarker | null = null;
@@ -307,6 +340,7 @@ class MediaPipeFaceEngine {
   }
 
   private async initialize(): Promise<MlEngineStatus> {
+    installMediaPipeConsoleFilter();
     const fileset = await this.loadVisionFileset();
 
     // Try WebGL GPU delegate first for 60 FPS, seamlessly fall back to WASM CPU delegate
