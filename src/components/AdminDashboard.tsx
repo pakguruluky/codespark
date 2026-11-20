@@ -60,6 +60,7 @@ import { soundEngine } from '../engine/soundEngine';
 import { formatShortDate, formatWhatsAppUrl, generateAccessCode } from '../utils/crypto';
 import { CertificateView } from './CertificateView';
 import { CodingStudio } from './CodingStudio';
+import { ModuleGuideModal } from './ModuleGuideModal';
 
 interface Props {
   session: AppSession;
@@ -114,6 +115,7 @@ export const AdminDashboard: React.FC<Props> = ({ session, store, onLogout }) =>
   const [searchQuery, setSearchQuery] = useState('');
   const [filterInstructor, setFilterInstructor] = useState('ALL');
   const [previewCert, setPreviewCert] = useState<CertificateRecord | null>(null);
+  const [moduleModalTier, setModuleModalTier] = useState<TierId | null>(null);
 
   // Admin Full Materials & Unlocked Studio Preview State
   const [previewView, setPreviewView] = useState<'materials' | 'studio'>('materials');
@@ -509,6 +511,7 @@ export const AdminDashboard: React.FC<Props> = ({ session, store, onLogout }) =>
             onBackToMap={() => setPreviewView('materials')}
             onSelectLevel={(id) => setPreviewLevelId(id)}
             onOpenCertificates={() => openSampleCertificate(previewLevel.tier)}
+            onOpenModule={(tier) => setModuleModalTier(tier)}
             onLevelComplete={async ({ levelId, stars }) => {
               setPreviewStars((prev) => ({
                 ...prev,
@@ -1430,14 +1433,27 @@ export const AdminDashboard: React.FC<Props> = ({ session, store, onLogout }) =>
                             </h3>
                             <p className="text-xs sm:text-sm text-neutral-700 mt-0.5">{tier.description}</p>
                           </div>
-                          <button
-                            type="button"
-                            onClick={() => openSampleCertificate(tier.id)}
-                            className="neo-btn bg-[#FFE600] px-3.5 py-2 text-xs font-extrabold inline-flex items-center gap-1.5 cursor-pointer"
-                          >
-                            <Award className="w-4 h-4" />
-                            Pratinjau Sertifikat {tier.shortName}
-                          </button>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                soundEngine.playButtonClick();
+                                setModuleModalTier(tier.id);
+                              }}
+                              className="neo-btn bg-[#38BDF8] px-3.5 py-2 text-xs font-extrabold inline-flex items-center gap-1.5 cursor-pointer"
+                            >
+                              <BookOpen className="w-4 h-4" />
+                              Modul Singkat {tier.shortName}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => openSampleCertificate(tier.id)}
+                              className="neo-btn bg-[#FFE600] px-3.5 py-2 text-xs font-extrabold inline-flex items-center gap-1.5 cursor-pointer"
+                            >
+                              <Award className="w-4 h-4" />
+                              Pratinjau Sertifikat {tier.shortName}
+                            </button>
+                          </div>
                         </div>
 
                         <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-5">
@@ -1563,6 +1579,9 @@ export const AdminDashboard: React.FC<Props> = ({ session, store, onLogout }) =>
       </nav>
 
       {previewCert && <CertificateView certificate={previewCert} onClose={() => setPreviewCert(null)} />}
+      {moduleModalTier && (
+        <ModuleGuideModal initialTier={moduleModalTier} onClose={() => setModuleModalTier(null)} />
+      )}
     </div>
   );
 };

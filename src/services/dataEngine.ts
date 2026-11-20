@@ -19,7 +19,7 @@ import {
   type Unsubscribe,
 } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
-import { auth, db, handleFirestoreError, OperationType } from '../lib/firebase';
+import { auth, db, handleFirestoreError, OperationType, testConnection } from '../lib/firebase';
 import { firebaseConfig, isFirebaseConfigured } from '../firebaseConfig.js';
 import type {
   AccessCode,
@@ -313,23 +313,32 @@ class CodeSparkDataEngine {
       });
     }
 
-    if (isFirebaseConfigured() && auth && db) {
-      onAuthStateChanged(auth, (user) => {
-        if (user && user.emailVerified) {
-          void this.connectFirebaseRealtime({
-            uid: user.uid,
-            email: user.email || '',
-            directMode: false,
-          });
-        } else {
-          // Automatically connect in direct realtime mode if Firestore rules allow it
-          void this.connectFirebaseRealtime({
-            uid: 'direct_client',
-            email: null,
-            directMode: true,
-          });
-        }
-      });
+    if (isFirebaseConfigured() && db) {
+      void testConnection();
+      if (auth) {
+        onAuthStateChanged(auth, (user) => {
+          if (user && user.emailVerified) {
+            void this.connectFirebaseRealtime({
+              uid: user.uid,
+              email: user.email || '',
+              directMode: false,
+            });
+          } else {
+            // Automatically connect in direct realtime mode if Firestore rules allow it
+            void this.connectFirebaseRealtime({
+              uid: 'direct_client',
+              email: null,
+              directMode: true,
+            });
+          }
+        });
+      } else {
+        void this.connectFirebaseRealtime({
+          uid: 'direct_client',
+          email: null,
+          directMode: true,
+        });
+      }
     }
   }
 
@@ -382,6 +391,7 @@ class CodeSparkDataEngine {
     directMode: boolean;
   }) {
     if (!db) return;
+    const firestoreDb = db;
     const attemptId = ++this.connectionAttemptId;
     this.cleanupFirestoreListeners();
 
@@ -395,15 +405,49 @@ class CodeSparkDataEngine {
     this.emit();
 
     // Probe Firestore server reachability & permission before switching mode
-    try {
-      await getDocFromServer(doc(db, 'settings', 'app_config'));
+    // Retries once on transient cold-start/offline network blips
+    const probeServer = async () => {
+      await getDocFromServer(doc(firestoreDb, 'settings', 'app_config'));
       if (opts.directMode) {
-        // Verify collection list access works in direct mode
-        await getDocsFromServer(query(collection(db, 'access_codes'), limit(1)));
+        await getDocsFromServer(query(collection(firestoreDb, 'access_codes'), limit(1)));
       }
-    } catch (error) {
+    };
+
+    try {
+      await probeServer();
+    } catch (firstError) {
       if (attemptId !== this.connectionAttemptId) return;
-      if (isPermissionDeniedError(error)) {
+      if (!isPermissionDeniedError(firstError)) {
+        await new Promise((r) => setTimeout(r, 1500));
+        if (attemptId !== this.connectionAttemptId) return;
+        try {
+          await probeServer();
+        } catch (error) {
+          if (attemptId !== this.connectionAttemptId) return;
+          if (isPermissionDeniedError(error)) {
+            this.fallbackToLocal(
+              'auth_required',
+              opts.directMode
+                ? `Aturan keamanan Firestore pada ${firebaseConfig.projectId} membutuhkan izin akses. Klik "Hubungkan Firebase (Google)" atau sesuaikan Rules di Firebase Console.`
+                : `Akun Google Anda belum mendapat izin baca/tulis pada Firestore Rules proyek ${firebaseConfig.projectId}.`,
+              opts.email
+            );
+            return;
+          }
+          const rawMsg = error instanceof Error ? error.message : String(error);
+          const dbNotFound =
+            rawMsg.toLowerCase().includes('does not exist') ||
+            rawMsg.toLowerCase().includes('not-found');
+          this.fallbackToLocal(
+            'offline',
+            dbNotFound
+              ? `Database Cloud Firestore (${firebaseConfig.firestoreDatabaseId || '(default)'}) belum dibuat pada proyek ${firebaseConfig.projectId}. Buka Firebase Console → Firestore Database → Create database.`
+              : `Cloud Firestore (${firebaseConfig.firestoreDatabaseId || '(default)'}) pada proyek ${firebaseConfig.projectId} belum dapat dijangkau (${rawMsg}). Periksa koneksi internet atau status Firestore di Firebase Console.`,
+            opts.email
+          );
+          return;
+        }
+      } else {
         this.fallbackToLocal(
           'auth_required',
           opts.directMode
@@ -413,18 +457,6 @@ class CodeSparkDataEngine {
         );
         return;
       }
-      const rawMsg = error instanceof Error ? error.message : String(error);
-      const dbNotFound =
-        rawMsg.toLowerCase().includes('does not exist') ||
-        rawMsg.toLowerCase().includes('not-found');
-      this.fallbackToLocal(
-        'offline',
-        dbNotFound
-          ? `Database Cloud Firestore (${firebaseConfig.firestoreDatabaseId || '(default)'}) belum dibuat pada proyek ${firebaseConfig.projectId}. Buka Firebase Console → Firestore Database → Create database.`
-          : `Cloud Firestore (${firebaseConfig.firestoreDatabaseId || '(default)'}) pada proyek ${firebaseConfig.projectId} belum dapat dijangkau (${rawMsg}). Periksa koneksi internet atau status Firestore di Firebase Console.`,
-        opts.email
-      );
-      return;
     }
 
     if (attemptId !== this.connectionAttemptId) return;

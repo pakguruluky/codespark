@@ -15,6 +15,7 @@ import {
   Repeat,
   Lock,
   Phone,
+  BookOpen,
 } from 'lucide-react';
 import type {
   BlockType,
@@ -43,6 +44,7 @@ interface Props {
   onBackToMap: () => void;
   onSelectLevel: (levelId: string) => void;
   onOpenCertificates: () => void;
+  onOpenModule?: (tier: LevelDefinition['tier']) => void;
   onLevelComplete: (payload: {
     levelId: string;
     tier: LevelDefinition['tier'];
@@ -85,6 +87,7 @@ export const CodingStudio: React.FC<Props> = ({
   onBackToMap,
   onSelectLevel,
   onOpenCertificates,
+  onOpenModule,
   onLevelComplete,
 }) => {
   const [activeTab, setActiveTab] = useState<StudioTab>('blocks');
@@ -702,8 +705,23 @@ export const CodingStudio: React.FC<Props> = ({
               })}
             </div>
 
-            {/* Golden Menu Button on Right of Wooden Header */}
-            <div className="relative pb-1.5 shrink-0">
+            {/* Modul Singkat & Golden Menu Buttons on Right of Wooden Header */}
+            <div className="relative pb-1.5 shrink-0 flex items-center gap-1.5">
+              {onOpenModule && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    soundEngine.playButtonClick();
+                    onOpenModule(level.tier);
+                  }}
+                  className="h-9 px-2.5 rounded bg-gradient-to-b from-[#66C93B] to-[#439A1F] border-2 border-[#255910] flex items-center gap-1 text-white text-xs font-extrabold shadow cursor-pointer"
+                  title="Buka Modul Singkat Materi Ini"
+                >
+                  <BookOpen className="w-4 h-4 shrink-0" />
+                  <span className="hidden sm:inline">Modul</span>
+                </button>
+              )}
+
               <button
                 type="button"
                 onClick={() => {
@@ -717,7 +735,20 @@ export const CodingStudio: React.FC<Props> = ({
               </button>
 
               {menuOpen && (
-                <div className="absolute right-0 top-11 z-30 w-52 rounded-md border-2 border-[#5C2A0E] bg-[#FFF5D6] shadow-lg p-2 space-y-1 text-xs font-bold text-[#3A1E08]">
+                <div className="absolute right-0 top-11 z-30 w-56 rounded-md border-2 border-[#5C2A0E] bg-[#FFF5D6] shadow-lg p-2 space-y-1 text-xs font-bold text-[#3A1E08]">
+                  {onOpenModule && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMenuOpen(false);
+                        onOpenModule(level.tier);
+                      }}
+                      className="w-full text-left px-2.5 py-2 rounded hover:bg-[#EED48A] cursor-pointer flex items-center gap-1.5"
+                    >
+                      <BookOpen className="w-3.5 h-3.5" />
+                      Buka Modul Singkat ({level.tierLabel})
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={resetToStarter}

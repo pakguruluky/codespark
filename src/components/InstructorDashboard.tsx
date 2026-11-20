@@ -17,6 +17,7 @@ import {
   X,
   Eye,
   AlertCircle,
+  BookOpen,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -27,11 +28,12 @@ import {
   CartesianGrid,
   Tooltip,
 } from 'recharts';
-import type { AppSession, CertificateRecord, DataStoreSnapshot } from '../types';
+import type { AppSession, CertificateRecord, DataStoreSnapshot, TierId } from '../types';
 import { dataEngine } from '../services/dataEngine';
 import { LEVELS } from '../data/levels';
 import { formatShortDate, generateAccessCode } from '../utils/crypto';
 import { CertificateView } from './CertificateView';
+import { ModuleGuideModal } from './ModuleGuideModal';
 
 interface Props {
   session: AppSession;
@@ -53,6 +55,7 @@ export const InstructorDashboard: React.FC<Props> = ({ session, store, onLogout 
   const [formSuccess, setFormSuccess] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [previewCert, setPreviewCert] = useState<CertificateRecord | null>(null);
+  const [moduleModalTier, setModuleModalTier] = useState<TierId | null>(null);
 
   const myCodes = useMemo(
     () => store.accessCodes.filter((c) => c.createdById === session.id),
@@ -156,14 +159,25 @@ export const InstructorDashboard: React.FC<Props> = ({ session, store, onLogout 
             </span>
           </div>
 
-          <button
-            type="button"
-            onClick={onLogout}
-            className="neo-btn bg-[#FB7185] px-3.5 py-2 text-xs sm:text-sm font-extrabold inline-flex items-center gap-1.5 cursor-pointer"
-          >
-            <LogOut className="w-4 h-4" />
-            <span>Keluar</span>
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setModuleModalTier('pemula')}
+              className="neo-btn bg-[#FFE600] px-3 py-2 text-xs sm:text-sm font-extrabold inline-flex items-center gap-1.5 cursor-pointer"
+            >
+              <BookOpen className="w-4 h-4" />
+              <span className="hidden sm:inline">Modul Materi</span>
+              <span className="sm:hidden">Modul</span>
+            </button>
+            <button
+              type="button"
+              onClick={onLogout}
+              className="neo-btn bg-[#FB7185] px-3.5 py-2 text-xs sm:text-sm font-extrabold inline-flex items-center gap-1.5 cursor-pointer"
+            >
+              <LogOut className="w-4 h-4" />
+              <span>Keluar</span>
+            </button>
+          </div>
         </div>
       </header>
 
@@ -618,6 +632,9 @@ export const InstructorDashboard: React.FC<Props> = ({ session, store, onLogout 
       </nav>
 
       {previewCert && <CertificateView certificate={previewCert} onClose={() => setPreviewCert(null)} />}
+      {moduleModalTier && (
+        <ModuleGuideModal initialTier={moduleModalTier} onClose={() => setModuleModalTier(null)} />
+      )}
     </div>
   );
 };

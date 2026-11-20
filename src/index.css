@@ -165,7 +165,8 @@
     display: none !important;
   }
 
-  .print-only-certificate {
+  .print-only-certificate,
+  .print-only-module {
     display: block !important;
     position: static !important;
     width: 100% !important;

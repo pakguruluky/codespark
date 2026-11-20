@@ -13,9 +13,12 @@ import {
   Check,
   Sparkles,
   Volume2,
+  BookOpen,
 } from 'lucide-react';
+import type { TierId } from '../types';
 import { TIERS } from '../data/levels';
 import { IsometricPandaSprite, PandaPortrait } from './PandaMascot';
+import { ModuleGuideModal } from './ModuleGuideModal';
 import { soundEngine } from '../engine/soundEngine';
 
 interface Props {
@@ -45,6 +48,7 @@ export const LandingPage: React.FC<Props> = ({ onGoLogin, onGoRegister }) => {
   const [demoRunning, setDemoRunning] = useState(false);
   const [demoTab, setDemoTab] = useState<'blocks' | 'python' | 'javascript'>('blocks');
   const [copiedCode, setCopiedCode] = useState(false);
+  const [moduleModalTier, setModuleModalTier] = useState<TierId | null>(null);
 
   useEffect(() => {
     if (!demoRunning) return;
@@ -485,8 +489,18 @@ export const LandingPage: React.FC<Props> = ({ onGoLogin, onGoRegister }) => {
                     </div>
                   </div>
                   <div className="px-6 pb-6 pt-2">
-                    <div className="border-t-2 border-black/15 pt-4 flex items-center justify-between text-xs font-bold">
-                      <span>Termasuk Sertifikat Lulus</span>
+                    <div className="border-t-2 border-black/15 pt-4 flex flex-wrap items-center justify-between gap-2 text-xs font-bold">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          soundEngine.playButtonClick();
+                          setModuleModalTier(tier.id);
+                        }}
+                        className="neo-btn bg-[#FFFDF7] hover:bg-[#FFE600] px-2.5 py-1.5 text-xs font-extrabold inline-flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <BookOpen className="w-3.5 h-3.5" />
+                        Modul Singkat
+                      </button>
                       <button
                         type="button"
                         onClick={onGoRegister}
@@ -585,6 +599,10 @@ export const LandingPage: React.FC<Props> = ({ onGoLogin, onGoRegister }) => {
           </p>
         </div>
       </footer>
+
+      {moduleModalTier && (
+        <ModuleGuideModal initialTier={moduleModalTier} onClose={() => setModuleModalTier(null)} />
+      )}
     </div>
   );
 };

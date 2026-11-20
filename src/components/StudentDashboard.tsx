@@ -35,6 +35,7 @@ import { dataEngine, isTrialAccessCode } from '../services/dataEngine';
 import { soundEngine } from '../engine/soundEngine';
 import { CodingStudio } from './CodingStudio';
 import { CertificateView } from './CertificateView';
+import { ModuleGuideModal } from './ModuleGuideModal';
 import { CHARACTER_META, MascotPortrait, getCharacterForLevel } from './PandaMascot';
 import { formatIndonesianDate, formatWhatsAppUrl } from '../utils/crypto';
 
@@ -57,6 +58,7 @@ export const StudentDashboard: React.FC<Props> = ({
   const [activeTab, setActiveTab] = useState<StudentTab>('studio');
   const [selectedLevelId, setSelectedLevelId] = useState<string>('p1');
   const [previewCert, setPreviewCert] = useState<CertificateRecord | null>(null);
+  const [moduleModalTier, setModuleModalTier] = useState<TierId | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [sfxOn, setSfxOn] = useState(() => soundEngine.isSfxEnabled());
 
@@ -403,6 +405,7 @@ export const StudentDashboard: React.FC<Props> = ({
             onBackToMap={() => setActiveTab('map')}
             onSelectLevel={(id) => handleOpenLevel(id)}
             onOpenCertificates={() => setActiveTab('certificates')}
+            onOpenModule={(tier) => setModuleModalTier(tier)}
             onLevelComplete={handleLevelComplete}
           />
         )}
@@ -471,10 +474,21 @@ export const StudentDashboard: React.FC<Props> = ({
                         </h2>
                         <p className="text-xs sm:text-sm text-neutral-700">{tier.description}</p>
                       </div>
-                      <div className="flex items-center gap-3">
+                      <div className="flex flex-wrap items-center gap-2.5">
                         <span className="font-mono text-xs font-extrabold tabular-nums">
                           {tierDoneCount}/{tierLevels.length} Selesai
                         </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            soundEngine.playButtonClick();
+                            setModuleModalTier(tier.id);
+                          }}
+                          className="neo-btn bg-[#38BDF8] px-3 py-1.5 text-xs font-extrabold inline-flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <BookOpen className="w-4 h-4" />
+                          Modul Singkat
+                        </button>
                         {hasCert && (
                           <button
                             type="button"
@@ -848,6 +862,10 @@ export const StudentDashboard: React.FC<Props> = ({
             </form>
           </div>
         </div>
+      )}
+
+      {moduleModalTier && (
+        <ModuleGuideModal initialTier={moduleModalTier} onClose={() => setModuleModalTier(null)} />
       )}
     </div>
   );
