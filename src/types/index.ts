@@ -2,6 +2,17 @@ export type UserRole = 'student' | 'instructor' | 'admin';
 
 export type TierId = 'pemula' | 'menengah' | 'lanjutan';
 
+export type ProgressTierId = TierId | 'app_maker';
+
+export type ProgramId = 'studio' | 'app_maker';
+
+export type AppMakerProjectId =
+  | 'app_photogram'
+  | 'app_todo'
+  | 'app_calculator'
+  | 'app_color'
+  | 'app_weather';
+
 export type CodeLanguage = 'python' | 'javascript';
 
 export type Direction = 'N' | 'E' | 'S' | 'W';
@@ -26,6 +37,7 @@ export interface AccessCode {
   ownerUid: string;
   isActive: boolean;
   isTrial?: boolean;
+  includeAppMaker?: boolean;
   createdAt: string;
 }
 
@@ -47,6 +59,8 @@ export interface Student {
   instructorName: string;
   instructorUid: string;
   ownerUid: string;
+  hasAppMakerAccess?: boolean;
+  requestedAppMaker?: boolean;
   createdAt: string;
 }
 
@@ -54,7 +68,7 @@ export interface ProgressRecord {
   id: string;
   studentId: string;
   levelId: string;
-  tier: TierId;
+  tier: ProgressTierId;
   stars: 1 | 2 | 3;
   codeSubmitted: string;
   language: CodeLanguage;
@@ -68,7 +82,7 @@ export interface CertificateRecord {
   certificateNo: string;
   studentId: string;
   studentName: string;
-  tierId: TierId;
+  tierId: ProgressTierId;
   tierName: string;
   instructorName: string;
   instructorUid: string;
@@ -87,6 +101,8 @@ export interface AppSession {
   instructorUid?: string;
   accessCode?: string;
   specialty?: string;
+  hasAppMakerAccess?: boolean;
+  requestedAppMaker?: boolean;
 }
 
 export interface GridCoord {
@@ -173,4 +189,3 @@ export interface DataStoreSnapshot {
   lastSyncedAt: string | null;
   loading: boolean;
 }
-

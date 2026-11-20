@@ -10,7 +10,9 @@ interface Props {
 }
 
 export const CertificateView: React.FC<Props> = ({ certificate, onClose }) => {
-  const tierMeta = getTierMeta(certificate.tierId);
+  const isAppMaker = certificate.tierId === 'app_maker';
+  const accentColor =
+    certificate.tierId === 'app_maker' ? '#FB7185' : getTierMeta(certificate.tierId).accentColor;
 
   const handlePrint = () => {
     window.print();
@@ -52,7 +54,7 @@ export const CertificateView: React.FC<Props> = ({ certificate, onClose }) => {
           {/* Top Accent Ribbon */}
           <div
             className="h-4 border-b-[3px] border-black -mx-6 sm:-mx-10 -mt-6 sm:-mt-10 mb-8"
-            style={{ backgroundColor: tierMeta.accentColor }}
+            style={{ backgroundColor: accentColor }}
           />
 
           <div className="border-[3px] border-black bg-white p-6 sm:p-10 space-y-8 relative">
@@ -87,12 +89,13 @@ export const CertificateView: React.FC<Props> = ({ certificate, onClose }) => {
                 {certificate.studentName}
               </h2>
               <p className="text-sm sm:text-base text-neutral-700 max-w-2xl mx-auto leading-relaxed">
-                Telah berhasil menyelesaikan seluruh tantangan pemrograman interaktif (Python &amp; JavaScript)
-                serta lulus evaluasi logika algoritma pada kurikulum:
+                {isAppMaker
+                  ? 'Telah berhasil merancang dan membangun seluruh 5 proyek aplikasi interaktif (Photogram AI, Todo App, Simple Calculator, Color Generatif, dan Weather App) pada program panduan:'
+                  : 'Telah berhasil menyelesaikan seluruh tantangan pemrograman interaktif (Python & JavaScript) serta lulus evaluasi logika algoritma pada kurikulum:'}
               </p>
               <div
                 className="inline-block px-6 py-3 border-[3px] border-black shadow-[4px_4px_0px_0px_#000] font-display text-lg sm:text-2xl font-extrabold"
-                style={{ backgroundColor: tierMeta.accentColor }}
+                style={{ backgroundColor: accentColor }}
               >
                 {certificate.tierName}
               </div>

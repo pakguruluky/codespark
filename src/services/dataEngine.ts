@@ -23,12 +23,14 @@ import { auth, db, handleFirestoreError, OperationType, testConnection } from '.
 import { firebaseConfig, isFirebaseConfigured } from '../firebaseConfig.js';
 import type {
   AccessCode,
+  AppMakerProjectId,
   AppSettings,
   CertificateRecord,
   CodeLanguage,
   DataStoreSnapshot,
   Instructor,
   ProgressRecord,
+  ProgressTierId,
   Student,
   TierId,
 } from '../types';
@@ -39,6 +41,7 @@ import {
   sanitizeId,
 } from '../utils/crypto';
 import { getLevelsByTier, getTierMeta } from '../data/levels';
+import { APP_MAKER_PROJECTS } from '../data/appMakerProjects';
 
 const LOCAL_STORAGE_KEY = 'codespark_realtime_db_v1';
 const CHANNEL_NAME = 'codespark_realtime_sync';
@@ -59,6 +62,20 @@ export function isTrialAccessCode(code: string | undefined, accessCodes: AccessC
   if (upper === DEFAULT_ACCESS_CODE || upper.startsWith('BELAJAR')) return true;
   const found = accessCodes.find((c) => c.code.toUpperCase() === upper);
   return Boolean(found?.isTrial);
+}
+
+/**
+ * Determines whether a student currently has access to the App Maker guided project program.
+ * Priority: explicit admin toggle on student record -> fallback to access code setting.
+ */
+export function hasStudentAppMakerAccess(student: Student, accessCodes: AccessCode[]): boolean {
+  if (typeof student.hasAppMakerAccess === 'boolean') {
+    if (student.hasAppMakerAccess) return true;
+    return false;
+  }
+  const upper = (student.accessCode || '').trim().toUpperCase();
+  const found = accessCodes.find((c) => c.code.toUpperCase() === upper);
+  return Boolean(found?.includeAppMaker);
 }
 
 interface LocalDatabase {
@@ -85,6 +102,7 @@ function createInitialLocalDb(): LocalDatabase {
         ownerUid: 'local_admin',
         isActive: true,
         isTrial: true,
+        includeAppMaker: false,
         createdAt: now,
       },
     ],
@@ -111,6 +129,7 @@ function readLocalDb(): LocalDatabase {
             c.isTrial ??
             (c.code.toUpperCase() === DEFAULT_ACCESS_CODE ||
               c.code.toUpperCase().startsWith('BELAJAR')),
+          includeAppMaker: Boolean(c.includeAppMaker),
         }))
       : [];
     if (accessCodes.length === 0) {
@@ -185,6 +204,7 @@ function mapAccessCodeDoc(d: QueryDocumentSnapshot<DocumentData>): AccessCode {
       typeof data.isTrial === 'boolean'
         ? data.isTrial
         : codeStr.toUpperCase().startsWith('BELAJAR'),
+    includeAppMaker: Boolean(data.includeAppMaker),
     createdAt: timestampToIso(data.createdAt),
   };
 }
@@ -202,6 +222,9 @@ function mapStudentDoc(d: QueryDocumentSnapshot<DocumentData>): Student {
     instructorName: String(data.instructorName || ''),
     instructorUid: String(data.instructorUid || ''),
     ownerUid: String(data.ownerUid || ''),
+    hasAppMakerAccess:
+      typeof data.hasAppMakerAccess === 'boolean' ? data.hasAppMakerAccess : undefined,
+    requestedAppMaker: Boolean(data.requestedAppMaker),
     createdAt: timestampToIso(data.createdAt),
   };
 }
@@ -214,7 +237,7 @@ function mapProgressDoc(d: QueryDocumentSnapshot<DocumentData>): ProgressRecord 
     id: String(data.id || d.id),
     studentId: String(data.studentId || ''),
     levelId: String(data.levelId || ''),
-    tier: (data.tier as TierId) || 'pemula',
+    tier: (data.tier as ProgressTierId) || 'pemula',
     stars,
     codeSubmitted: String(data.codeSubmitted || ''),
     language: data.language === 'javascript' ? 'javascript' : 'python',
@@ -231,7 +254,7 @@ function mapCertDoc(d: QueryDocumentSnapshot<DocumentData>): CertificateRecord {
     certificateNo: String(data.certificateNo || ''),
     studentId: String(data.studentId || ''),
     studentName: String(data.studentName || ''),
-    tierId: (data.tierId as TierId) || 'pemula',
+    tierId: (data.tierId as ProgressTierId) || 'pemula',
     tierName: String(data.tierName || ''),
     instructorName: String(data.instructorName || ''),
     instructorUid: String(data.instructorUid || ''),
@@ -499,6 +522,7 @@ class CodeSparkDataEngine {
           ownerUid: uid,
           isActive: true,
           isTrial: true,
+          includeAppMaker: false,
           createdAt: serverTimestamp(),
         });
       }
@@ -969,6 +993,7 @@ class CodeSparkDataEngine {
     createdById: string;
     createdByName: string;
     isTrial?: boolean;
+    includeAppMaker?: boolean;
   }): Promise<AccessCode> {
     const code = clampString(input.code, 32)
       .toUpperCase()
@@ -985,6 +1010,7 @@ class CodeSparkDataEngine {
       this.snapshot.mode === 'firebase' && auth?.currentUser ? auth.currentUser.uid : 'local_admin';
     const now = new Date().toISOString();
     const isTrial = input.isTrial ?? code.startsWith('BELAJAR');
+    const includeAppMaker = Boolean(input.includeAppMaker);
 
     const record: AccessCode = {
       id: code,
@@ -996,6 +1022,7 @@ class CodeSparkDataEngine {
       ownerUid,
       isActive: true,
       isTrial,
+      includeAppMaker,
       createdAt: now,
     };
 
@@ -1011,6 +1038,7 @@ class CodeSparkDataEngine {
           ownerUid,
           isActive: true,
           isTrial,
+          includeAppMaker,
           createdAt: serverTimestamp(),
         });
       } catch (error) {
@@ -1037,6 +1065,23 @@ class CodeSparkDataEngine {
       this.writeLocalDb((state) => ({
         ...state,
         accessCodes: state.accessCodes.map((c) => (c.id === codeId ? { ...c, isActive } : c)),
+      }));
+    }
+  }
+
+  public async toggleAccessCodeAppMaker(codeId: string, includeAppMaker: boolean): Promise<void> {
+    if (this.snapshot.mode === 'firebase' && db) {
+      try {
+        await updateDoc(doc(db, 'access_codes', codeId), { includeAppMaker });
+      } catch (error) {
+        handleFirestoreError(error, OperationType.UPDATE, `access_codes/${codeId}`);
+      }
+    } else {
+      this.writeLocalDb((state) => ({
+        ...state,
+        accessCodes: state.accessCodes.map((c) =>
+          c.id === codeId ? { ...c, includeAppMaker } : c
+        ),
       }));
     }
   }
@@ -1079,6 +1124,7 @@ class CodeSparkDataEngine {
             typeof data.isTrial === 'boolean'
               ? data.isTrial
               : codeStr.toUpperCase().startsWith('BELAJAR'),
+          includeAppMaker: Boolean(data.includeAppMaker),
           createdAt: timestampToIso(data.createdAt),
         };
       } catch (error) {
@@ -1096,6 +1142,7 @@ class CodeSparkDataEngine {
     username: string;
     password: string;
     accessCode: string;
+    requestedAppMaker?: boolean;
   }): Promise<Student> {
     const name = clampString(input.name, 100);
     const username = clampString(input.username, 50).toLowerCase();
@@ -1125,6 +1172,8 @@ class CodeSparkDataEngine {
     const ownerUid =
       this.snapshot.mode === 'firebase' && auth?.currentUser ? auth.currentUser.uid : id;
     const now = new Date().toISOString();
+    const hasAppMakerAccess = Boolean(matchedCode.includeAppMaker);
+    const requestedAppMaker = Boolean(input.requestedAppMaker);
 
     const record: Student = {
       id,
@@ -1137,6 +1186,8 @@ class CodeSparkDataEngine {
       instructorName: matchedCode.createdByName,
       instructorUid: matchedCode.ownerUid,
       ownerUid,
+      hasAppMakerAccess,
+      requestedAppMaker,
       createdAt: now,
     };
 
@@ -1153,6 +1204,8 @@ class CodeSparkDataEngine {
           instructorName: matchedCode.createdByName,
           instructorUid: matchedCode.ownerUid,
           ownerUid,
+          hasAppMakerAccess,
+          requestedAppMaker,
           createdAt: serverTimestamp(),
         });
       } catch (error) {
@@ -1172,17 +1225,19 @@ class CodeSparkDataEngine {
     const codeStr = clampString(rawCode, 32).toUpperCase();
     const matchedCode = await this.lookupAccessCode(codeStr);
     if (!matchedCode) {
-      throw new Error(`Kode Akses "${codeStr}" tidak ditemukan! Minta kode kelas penuh dari Admin.`);
+      throw new Error(`Kode Akses "${codeStr}" tidak ditemukan! Minta kode kelas penuh atau kode App Maker dari Admin.`);
     }
     if (!matchedCode.isActive) {
       throw new Error(`Kode Akses "${codeStr}" sedang nonaktif.`);
     }
-    if (matchedCode.isTrial || codeStr.startsWith('BELAJAR')) {
-      throw new Error(`Kode "${codeStr}" adalah kode uji coba (Level 1 saja). Masukkan Kode Akses Kelas Penuh dari Admin.`);
+    if ((matchedCode.isTrial || codeStr.startsWith('BELAJAR')) && !matchedCode.includeAppMaker) {
+      throw new Error(`Kode "${codeStr}" adalah kode uji coba (Level 1 saja). Masukkan Kode Akses Kelas Penuh / App Maker dari Admin.`);
     }
 
     const existing = this.snapshot.students.find((s) => s.id === studentId);
     if (!existing) throw new Error('Data siswa tidak ditemukan.');
+
+    const nextAppMakerAccess = Boolean(matchedCode.includeAppMaker || existing.hasAppMakerAccess);
 
     const updated: Student = {
       ...existing,
@@ -1191,6 +1246,7 @@ class CodeSparkDataEngine {
       instructorId: matchedCode.createdById,
       instructorName: matchedCode.createdByName,
       instructorUid: matchedCode.ownerUid,
+      hasAppMakerAccess: nextAppMakerAccess,
     };
 
     if (this.snapshot.mode === 'firebase' && db) {
@@ -1201,6 +1257,7 @@ class CodeSparkDataEngine {
           instructorId: matchedCode.createdById,
           instructorName: matchedCode.createdByName,
           instructorUid: matchedCode.ownerUid,
+          hasAppMakerAccess: nextAppMakerAccess,
         });
       } catch (error) {
         handleFirestoreError(error, OperationType.UPDATE, `students/${studentId}`);
@@ -1213,6 +1270,25 @@ class CodeSparkDataEngine {
     }
 
     return updated;
+  }
+
+  public async setStudentAppMakerAccess(studentId: string, enabled: boolean): Promise<void> {
+    if (this.snapshot.mode === 'firebase' && db) {
+      try {
+        await updateDoc(doc(db, 'students', studentId), {
+          hasAppMakerAccess: enabled,
+        });
+      } catch (error) {
+        handleFirestoreError(error, OperationType.UPDATE, `students/${studentId}`);
+      }
+    } else {
+      this.writeLocalDb((state) => ({
+        ...state,
+        students: state.students.map((s) =>
+          s.id === studentId ? { ...s, hasAppMakerAccess: enabled } : s
+        ),
+      }));
+    }
   }
 
   public async authenticateStudent(username: string, password: string): Promise<Student> {
@@ -1371,6 +1447,132 @@ class CodeSparkDataEngine {
               studentName: input.student.name,
               tierId: input.tier,
               tierName: tierMeta.certificateTitle,
+              instructorName: input.student.instructorName,
+              instructorUid: input.student.instructorUid,
+              ownerUid,
+              issuedAt: serverTimestamp(),
+            });
+          } catch (error) {
+            handleFirestoreError(error, OperationType.CREATE, `certificates/${certId}`);
+          }
+        } else {
+          this.writeLocalDb((state) => ({
+            ...state,
+            certificates: [certRecord, ...state.certificates],
+          }));
+        }
+        newCertificate = certRecord;
+      }
+    }
+
+    return { progress: record, newCertificate };
+  }
+
+  public async saveAppMakerProgress(input: {
+    student: Student;
+    projectId: AppMakerProjectId;
+    stars: 1 | 2 | 3;
+    codeSubmitted: string;
+  }): Promise<{ progress: ProgressRecord; newCertificate: CertificateRecord | null }> {
+    const progressId = `${input.student.id}_${input.projectId}`;
+    const existing = this.snapshot.progress.find((p) => p.id === progressId);
+    const bestStars = (existing ? Math.max(existing.stars, input.stars) : input.stars) as 1 | 2 | 3;
+    const trimmedCode = clampString(input.codeSubmitted, 4000) || 'app.render();';
+    const ownerUid =
+      this.snapshot.mode === 'firebase' && auth?.currentUser ? auth.currentUser.uid : input.student.ownerUid;
+    const now = new Date().toISOString();
+
+    const record: ProgressRecord = {
+      id: progressId,
+      studentId: input.student.id,
+      levelId: input.projectId,
+      tier: 'app_maker',
+      stars: bestStars,
+      codeSubmitted: trimmedCode,
+      language: 'javascript',
+      ownerUid,
+      instructorUid: input.student.instructorUid,
+      completedAt: now,
+    };
+
+    if (this.snapshot.mode === 'firebase' && db) {
+      try {
+        if (existing) {
+          await updateDoc(doc(db, 'progress', progressId), {
+            stars: bestStars,
+            codeSubmitted: trimmedCode,
+            language: 'javascript',
+            completedAt: serverTimestamp(),
+          });
+        } else {
+          await setDoc(doc(db, 'progress', progressId), {
+            id: progressId,
+            studentId: input.student.id,
+            levelId: input.projectId,
+            tier: 'app_maker',
+            stars: bestStars,
+            codeSubmitted: trimmedCode,
+            language: 'javascript',
+            ownerUid,
+            instructorUid: input.student.instructorUid,
+            completedAt: serverTimestamp(),
+          });
+        }
+      } catch (error) {
+        handleFirestoreError(
+          error,
+          existing ? OperationType.UPDATE : OperationType.CREATE,
+          `progress/${progressId}`
+        );
+      }
+    } else {
+      this.writeLocalDb((state) => {
+        const others = state.progress.filter((p) => p.id !== progressId);
+        return {
+          ...state,
+          progress: [record, ...others],
+        };
+      });
+    }
+
+    const completedProjectIds = new Set(
+      this.snapshot.progress
+        .filter((p) => p.studentId === input.student.id && p.tier === 'app_maker')
+        .map((p) => p.levelId)
+    );
+    completedProjectIds.add(input.projectId);
+
+    const allAppMakerDone = APP_MAKER_PROJECTS.every((proj) => completedProjectIds.has(proj.id));
+    let newCertificate: CertificateRecord | null = null;
+
+    if (allAppMakerDone) {
+      const certId = `${input.student.id}_app_maker`;
+      const existingCert = this.snapshot.certificates.find((c) => c.id === certId);
+      if (!existingCert) {
+        const certNo = generateCertificateNo('app_maker');
+        const certTitle = 'App Maker: 5 Proyek Aplikasi Interaktif';
+        const certRecord: CertificateRecord = {
+          id: certId,
+          certificateNo: certNo,
+          studentId: input.student.id,
+          studentName: input.student.name,
+          tierId: 'app_maker',
+          tierName: certTitle,
+          instructorName: input.student.instructorName,
+          instructorUid: input.student.instructorUid,
+          ownerUid,
+          issuedAt: now,
+        };
+
+        if (this.snapshot.mode === 'firebase' && db) {
+          try {
+            await setDoc(doc(db, 'certificates', certId), {
+              id: certId,
+              certificateNo: certNo,
+              studentId: input.student.id,
+              studentName: input.student.name,
+              tierId: 'app_maker',
+              tierName: certTitle,
               instructorName: input.student.instructorName,
               instructorUid: input.student.instructorUid,
               ownerUid,

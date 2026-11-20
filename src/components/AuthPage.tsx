@@ -12,6 +12,9 @@ import {
   UserPlus,
   LogIn,
   Cloud,
+  Check,
+  Code2,
+  Layers,
 } from 'lucide-react';
 import { dataEngine } from '../services/dataEngine';
 import { connectFirebaseWithGoogle } from '../lib/firebase';
@@ -45,6 +48,7 @@ export const AuthPage: React.FC<Props> = ({
   const [regUsername, setRegUsername] = useState('');
   const [regPassword, setRegPassword] = useState('');
   const [regCode, setRegCode] = useState('');
+  const [regWantAppMaker, setRegWantAppMaker] = useState(false);
   const [showRegPass, setShowRegPass] = useState(false);
 
   const [loading, setLoading] = useState(false);
@@ -96,6 +100,8 @@ export const AuthPage: React.FC<Props> = ({
         instructorName: student.instructorName,
         instructorUid: student.instructorUid,
         accessCode: student.accessCode,
+        hasAppMakerAccess: student.hasAppMakerAccess,
+        requestedAppMaker: student.requestedAppMaker,
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Gagal masuk ke sistem.');
@@ -114,6 +120,7 @@ export const AuthPage: React.FC<Props> = ({
         username: regUsername,
         password: regPassword,
         accessCode: regCode,
+        requestedAppMaker: regWantAppMaker,
       });
       onAuthenticated({
         role: 'student',
@@ -125,6 +132,8 @@ export const AuthPage: React.FC<Props> = ({
         instructorName: student.instructorName,
         instructorUid: student.instructorUid,
         accessCode: student.accessCode,
+        hasAppMakerAccess: student.hasAppMakerAccess,
+        requestedAppMaker: student.requestedAppMaker,
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Pendaftaran siswa gagal.');
@@ -407,6 +416,62 @@ export const AuthPage: React.FC<Props> = ({
                   placeholder="Contoh: BELAJAR2026 atau CODE-7X9A"
                   className="neo-input w-full px-3.5 py-2.5 text-sm font-mono font-bold uppercase tracking-wider"
                 />
+              </div>
+
+              {/* Guided Program Selection (Studio Wajib + App Maker Opsional) */}
+              <div className="space-y-2 pt-1">
+                <div className="text-sm font-bold">Pilih Program Panduan</div>
+                <div className="space-y-2">
+                  {/* Mandatory Coding Studio */}
+                  <div className="p-3 bg-[#4ADE80]/20 border-2 border-black flex items-start gap-2.5">
+                    <span className="w-5 h-5 mt-0.5 bg-[#4ADE80] border-2 border-black flex items-center justify-center shrink-0">
+                      <Check className="w-3.5 h-3.5 stroke-[3]" />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <Code2 className="w-3.5 h-3.5 shrink-0" />
+                        <span className="font-display font-extrabold text-sm">Coding Studio</span>
+                        <span className="px-1.5 py-0.5 bg-[#FFE600] border border-black text-[10px] font-extrabold">
+                          WAJIB
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-neutral-700 mt-0.5 leading-snug">
+                        9 Level interaktif Block, Python &amp; JavaScript (otomatis diikuti semua siswa).
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Optional App Maker */}
+                  <button
+                    type="button"
+                    onClick={() => setRegWantAppMaker((v) => !v)}
+                    className={`w-full text-left p-3 border-2 border-black flex items-start gap-2.5 cursor-pointer transition-colors ${
+                      regWantAppMaker
+                        ? 'bg-[#C084FC]/25 shadow-[3px_3px_0px_0px_#000]'
+                        : 'bg-white hover:bg-[#FFFDF7]'
+                    }`}
+                  >
+                    <span
+                      className={`w-5 h-5 mt-0.5 border-2 border-black flex items-center justify-center shrink-0 ${
+                        regWantAppMaker ? 'bg-[#C084FC]' : 'bg-white'
+                      }`}
+                    >
+                      {regWantAppMaker && <Check className="w-3.5 h-3.5 stroke-[3]" />}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <Layers className="w-3.5 h-3.5 shrink-0" />
+                        <span className="font-display font-extrabold text-sm">App Maker</span>
+                        <span className="px-1.5 py-0.5 bg-[#38BDF8] border border-black text-[10px] font-extrabold">
+                          OPSIONAL · 5 PROYEK
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-neutral-700 mt-0.5 leading-snug">
+                        Proyek bertahap: Photogram AI, Todo App, Simple Calculator, Color Generatif &amp; Weather App. Terbuka lewat Kode Akses App Maker atau aktivasi Admin.
+                      </p>
+                    </div>
+                  </button>
+                </div>
               </div>
 
               <button

@@ -30,6 +30,8 @@ import {
   ArrowLeft,
   Unlock,
   Lightbulb,
+  Layers,
+  Lock,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -47,19 +49,24 @@ import {
   Legend,
 } from 'recharts';
 import type {
+  AppMakerProjectId,
   AppSession,
   CertificateRecord,
   DataStoreSnapshot,
+  ProgressRecord,
+  ProgressTierId,
   TierId,
 } from '../types';
-import { dataEngine } from '../services/dataEngine';
+import { dataEngine, hasStudentAppMakerAccess } from '../services/dataEngine';
 import { CHARACTER_META, MascotPortrait, getCharacterForLevel } from './PandaMascot';
 import { LEVELS, TIERS, getLevelById, getLevelsByTier, getTierMeta } from '../data/levels';
+import { APP_MAKER_PROJECTS } from '../data/appMakerProjects';
 import { blocksToCode } from '../engine/interpreter';
 import { soundEngine } from '../engine/soundEngine';
 import { formatShortDate, formatWhatsAppUrl, generateAccessCode } from '../utils/crypto';
 import { CertificateView } from './CertificateView';
 import { CodingStudio } from './CodingStudio';
+import { AppMakerWorkspace } from './AppMakerWorkspace';
 import { ModuleGuideModal } from './ModuleGuideModal';
 
 interface Props {
@@ -90,6 +97,7 @@ export const AdminDashboard: React.FC<Props> = ({ session, store, onLogout }) =>
   const [codeClassName, setCodeClassName] = useState('');
   const [codeValue, setCodeValue] = useState(() => generateAccessCode('SPARK'));
   const [codeIsTrial, setCodeIsTrial] = useState(false);
+  const [codeIncludeAppMaker, setCodeIncludeAppMaker] = useState(false);
   const [codeLoading, setCodeLoading] = useState(false);
   const [codeError, setCodeError] = useState<string | null>(null);
   const [codeSuccess, setCodeSuccess] = useState<string | null>(null);
@@ -117,25 +125,36 @@ export const AdminDashboard: React.FC<Props> = ({ session, store, onLogout }) =>
   const [previewCert, setPreviewCert] = useState<CertificateRecord | null>(null);
   const [moduleModalTier, setModuleModalTier] = useState<TierId | null>(null);
 
-  // Admin Full Materials & Unlocked Studio Preview State
-  const [previewView, setPreviewView] = useState<'materials' | 'studio'>('materials');
+  // Admin Full Materials & Unlocked Studio/App Maker Preview State
+  const [previewView, setPreviewView] = useState<'materials' | 'studio' | 'app_maker'>('materials');
   const [previewLevelId, setPreviewLevelId] = useState<string>('p1');
+  const [previewAppProjectId, setPreviewAppProjectId] = useState<AppMakerProjectId | null>(null);
   const [previewTierFilter, setPreviewTierFilter] = useState<'ALL' | TierId>('ALL');
   const [previewStars, setPreviewStars] = useState<Record<string, 1 | 2 | 3>>({});
+  const [previewAppRecords, setPreviewAppRecords] = useState<Record<string, ProgressRecord>>({});
+
+  const previewAppMakerMap = useMemo(
+    () => new Map<string, ProgressRecord>(Object.entries(previewAppRecords)),
+    [previewAppRecords]
+  );
 
   const previewLevel = getLevelById(previewLevelId) || LEVELS[0];
   const previewPrevLevel = LEVELS.find((l) => l.order === previewLevel.order - 1);
   const previewNextLevel = LEVELS.find((l) => l.order === previewLevel.order + 1);
 
-  const openSampleCertificate = (tierId: TierId) => {
-    const tierMeta = getTierMeta(tierId);
+  const openSampleCertificate = (tierId: ProgressTierId) => {
+    const isApp = tierId === 'app_maker';
+    const title = isApp
+      ? 'App Maker: 5 Proyek Aplikasi Interaktif'
+      : getTierMeta(tierId).certificateTitle;
+    const codeTag = isApp ? 'APP' : tierId.slice(0, 3).toUpperCase();
     setPreviewCert({
       id: `preview_cert_${tierId}`,
-      certificateNo: `CS-2026-${tierId.slice(0, 3).toUpperCase()}-DEMO`,
+      certificateNo: `CS-2026-${codeTag}-DEMO`,
       studentId: 'admin_preview',
       studentName: `${session.name} (Contoh Sertifikat)`,
       tierId,
-      tierName: tierMeta.certificateTitle,
+      tierName: title,
       instructorName: 'Admin CodeSpark (Pak GuruAI)',
       instructorUid: 'admin',
       ownerUid: 'admin',
@@ -151,11 +170,19 @@ export const AdminDashboard: React.FC<Props> = ({ session, store, onLogout }) =>
     setDrawerOpen(false);
   };
 
+  const openAppMakerInPreview = (projectId: AppMakerProjectId | null = null) => {
+    soundEngine.playButtonClick();
+    setPreviewAppProjectId(projectId);
+    setActiveTab('preview');
+    setPreviewView('app_maker');
+    setDrawerOpen(false);
+  };
+
   // ==================== ANALYTICS DATA ====================
 
-  // 1. Bar Chart: Progress per Tier (Pemula, Menengah, Lanjutan)
+  // 1. Bar Chart: Progress per Tier (Pemula, Menengah, Lanjutan, App Maker)
   const tierBarData = useMemo(() => {
-    return TIERS.map((tier) => {
+    const studioRows = TIERS.map((tier) => {
       const tierProg = store.progress.filter((p) => p.tier === tier.id);
       const uniqueStudents = new Set(tierProg.map((p) => p.studentId)).size;
       const tierCerts = store.certificates.filter((c) => c.tierId === tier.id).length;
@@ -166,6 +193,14 @@ export const AdminDashboard: React.FC<Props> = ({ session, store, onLogout }) =>
         sertifikat: tierCerts,
       };
     });
+    const appProg = store.progress.filter((p) => p.tier === 'app_maker');
+    studioRows.push({
+      name: 'App Maker',
+      penyelesaianLevel: appProg.length,
+      siswaAktif: new Set(appProg.map((p) => p.studentId)).size,
+      sertifikat: store.certificates.filter((c) => c.tierId === 'app_maker').length,
+    });
+    return studioRows;
   }, [store.progress, store.certificates]);
 
   // 2. Pie / Donut Chart: Student Distribution by Instructor / Class
@@ -275,12 +310,14 @@ export const AdminDashboard: React.FC<Props> = ({ session, store, onLogout }) =>
         createdById: 'admin',
         createdByName: 'Admin CodeSpark',
         isTrial: codeIsTrial,
+        includeAppMaker: codeIncludeAppMaker,
       });
       setCodeSuccess(
-        `Kode akses "${created.code}" (${created.isTrial ? 'Uji Coba Level 1' : 'Akses Penuh L1–L9'}) untuk kelas "${created.className}" aktif!`
+        `Kode akses "${created.code}" (${created.isTrial ? 'Uji Coba Level 1' : 'Akses Penuh L1–L9'}${created.includeAppMaker ? ' + App Maker' : ''}) untuk kelas "${created.className}" aktif!`
       );
       setCodeClassName('');
       setCodeIsTrial(false);
+      setCodeIncludeAppMaker(false);
       setCodeValue(generateAccessCode('SPARK'));
     } catch (err) {
       setCodeError(err instanceof Error ? err.message : 'Gagal membuat kode akses.');
@@ -321,7 +358,7 @@ export const AdminDashboard: React.FC<Props> = ({ session, store, onLogout }) =>
     { id: 'instructors', label: `Instruktur (${store.instructors.length})`, shortLabel: 'Instruktur', icon: Users },
     { id: 'codes', label: `Kode Akses (${store.accessCodes.length})`, shortLabel: 'Kode', icon: KeyRound },
     { id: 'students', label: `Semua Siswa (${store.students.length})`, shortLabel: 'Siswa', icon: GraduationCap },
-    { id: 'preview', label: 'Materi & Studio (L1–L9)', shortLabel: 'Studio', icon: Gamepad2 },
+    { id: 'preview', label: 'Materi, Studio & App Maker', shortLabel: 'Materi', icon: Gamepad2 },
     { id: 'settings', label: 'Pengaturan', shortLabel: 'Setting', icon: Settings },
   ];
 
@@ -1020,6 +1057,37 @@ export const AdminDashboard: React.FC<Props> = ({ session, store, onLogout }) =>
                   </div>
                 </div>
 
+                {/* App Maker Access Inclusion Toggle */}
+                <div>
+                  <span className="block text-sm font-bold mb-1.5">Program Tambahan</span>
+                  <button
+                    type="button"
+                    onClick={() => setCodeIncludeAppMaker((v) => !v)}
+                    className={`w-full p-3 border-2 border-black text-left flex items-start gap-2.5 cursor-pointer ${
+                      codeIncludeAppMaker
+                        ? 'bg-[#C084FC]/30 shadow-[2px_2px_0px_0px_#000]'
+                        : 'bg-white'
+                    }`}
+                  >
+                    <span
+                      className={`w-5 h-5 mt-0.5 border-2 border-black flex items-center justify-center shrink-0 ${
+                        codeIncludeAppMaker ? 'bg-[#C084FC]' : 'bg-white'
+                      }`}
+                    >
+                      {codeIncludeAppMaker && <Check className="w-3.5 h-3.5 stroke-[3]" />}
+                    </span>
+                    <div className="min-w-0">
+                      <div className="text-xs font-extrabold flex items-center gap-1.5">
+                        <Layers className="w-3.5 h-3.5" />
+                        Sertakan Akses Program App Maker (5 Proyek)
+                      </div>
+                      <p className="text-[11px] text-neutral-600 mt-0.5">
+                        Siswa yang mendaftar/upgrade memakai kode ini otomatis mendapat akses Photogram AI → Weather App.
+                      </p>
+                    </div>
+                  </button>
+                </div>
+
                 <button
                   type="submit"
                   disabled={codeLoading}
@@ -1061,6 +1129,11 @@ export const AdminDashboard: React.FC<Props> = ({ session, store, onLogout }) =>
                             >
                               {item.isTrial ? 'Uji Coba · L1' : 'Akses Penuh · L1–L9'}
                             </span>
+                            {item.includeAppMaker && (
+                              <span className="text-xs font-extrabold px-2 py-0.5 border border-black bg-[#C084FC]">
+                                + App Maker
+                              </span>
+                            )}
                             <span className="text-xs font-bold text-neutral-600">
                               · oleh {item.createdByName} ({item.createdByRole})
                             </span>
@@ -1083,6 +1156,19 @@ export const AdminDashboard: React.FC<Props> = ({ session, store, onLogout }) =>
                               <Copy className="w-3.5 h-3.5" />
                             )}
                             {copiedId === item.code ? 'Tersalin' : 'Salin'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              void dataEngine.toggleAccessCodeAppMaker(item.id, !item.includeAppMaker)
+                            }
+                            className={`neo-btn px-3 py-1.5 text-xs font-extrabold inline-flex items-center gap-1 cursor-pointer ${
+                              item.includeAppMaker ? 'bg-[#C084FC]' : 'bg-white'
+                            }`}
+                            title="Buka atau tutup akses Program App Maker untuk kode ini"
+                          >
+                            <Layers className="w-3.5 h-3.5" />
+                            {item.includeAppMaker ? 'App Maker: ON' : '+ App Maker'}
                           </button>
                           <button
                             type="button"
@@ -1154,27 +1240,26 @@ export const AdminDashboard: React.FC<Props> = ({ session, store, onLogout }) =>
                 </div>
               ) : (
                 <div className="overflow-x-auto border-2 border-black">
-                  <table className="w-full text-left border-collapse min-w-[780px]">
+                  <table className="w-full text-left border-collapse min-w-[960px]">
                     <thead>
                       <tr className="bg-[#FFE600] border-b-2 border-black text-xs font-extrabold">
                         <th className="p-3 border-r-2 border-black">Siswa</th>
                         <th className="p-3 border-r-2 border-black">Instruktur &amp; Kelas</th>
-                        <th className="p-3 border-r-2 border-black">Progres Belajar</th>
+                        <th className="p-3 border-r-2 border-black">Studio (L1–L9)</th>
+                        <th className="p-3 border-r-2 border-black">Akses Program App Maker</th>
                         <th className="p-3 border-r-2 border-black">Bintang</th>
-                        <th className="p-3 border-r-2 border-black">Level Selesai</th>
                         <th className="p-3">Sertifikat</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y-2 divide-black text-sm">
                       {filteredStudents.map((stu) => {
-                        const stuProg = store.progress.filter((p) => p.studentId === stu.id);
+                        const stuAllProg = store.progress.filter((p) => p.studentId === stu.id);
+                        const stuProg = stuAllProg.filter((p) => p.tier !== 'app_maker');
+                        const stuAppProg = stuAllProg.filter((p) => p.tier === 'app_maker');
                         const stuStars = stuProg.reduce((a, b) => a + b.stars, 0);
                         const stuCerts = store.certificates.filter((c) => c.studentId === stu.id);
                         const pct = Math.round((stuProg.length / LEVELS.length) * 100);
-                        const doneOrders = stuProg
-                          .map((p) => LEVELS.find((l) => l.id === p.levelId)?.order)
-                          .filter((n): n is number => typeof n === 'number')
-                          .sort((a, b) => a - b);
+                        const hasAppMaker = hasStudentAppMakerAccess(stu, store.accessCodes);
 
                         return (
                           <tr key={stu.id} className="bg-white hover:bg-[#FFFDF7]">
@@ -1195,8 +1280,54 @@ export const AdminDashboard: React.FC<Props> = ({ session, store, onLogout }) =>
                                   {stuProg.length}/{LEVELS.length}
                                 </span>
                               </div>
-                              <div className="h-2.5 bg-neutral-100 border border-black w-32">
+                              <div className="h-2.5 bg-neutral-100 border border-black w-28">
                                 <div className="h-full bg-[#4ADE80]" style={{ width: `${pct}%` }} />
+                              </div>
+                            </td>
+                            <td className="p-3 border-r-2 border-black">
+                              <div className="flex flex-col gap-1.5">
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                  <span
+                                    className={`px-2 py-0.5 border border-black text-[11px] font-extrabold inline-flex items-center gap-1 ${
+                                      hasAppMaker ? 'bg-[#C084FC]' : 'bg-neutral-200 text-neutral-700'
+                                    }`}
+                                  >
+                                    {hasAppMaker ? (
+                                      <Unlock className="w-3 h-3" />
+                                    ) : (
+                                      <Lock className="w-3 h-3" />
+                                    )}
+                                    {hasAppMaker
+                                      ? `Aktif (${stuAppProg.length}/${APP_MAKER_PROJECTS.length})`
+                                      : 'Terkunci'}
+                                  </span>
+                                  {stu.requestedAppMaker && !hasAppMaker && (
+                                    <span className="px-1.5 py-0.5 bg-[#FFE600] border border-black text-[10px] font-extrabold">
+                                      Diminta Siswa
+                                    </span>
+                                  )}
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    void dataEngine.setStudentAppMakerAccess(stu.id, !hasAppMaker)
+                                  }
+                                  className={`neo-btn px-2.5 py-1 text-[11px] font-extrabold inline-flex items-center gap-1 self-start cursor-pointer ${
+                                    hasAppMaker ? 'bg-white' : 'bg-[#4ADE80]'
+                                  }`}
+                                >
+                                  {hasAppMaker ? (
+                                    <>
+                                      <Lock className="w-3 h-3" />
+                                      Kunci App Maker
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Unlock className="w-3 h-3" />
+                                      Buka App Maker
+                                    </>
+                                  )}
+                                </button>
                               </div>
                             </td>
                             <td className="p-3 border-r-2 border-black font-mono font-extrabold tabular-nums">
@@ -1204,9 +1335,6 @@ export const AdminDashboard: React.FC<Props> = ({ session, store, onLogout }) =>
                                 <Star className="w-4 h-4 fill-[#FFE600] text-black" />
                                 {stuStars}/{LEVELS.length * 3}
                               </span>
-                            </td>
-                            <td className="p-3 border-r-2 border-black font-mono text-xs font-bold">
-                              {doneOrders.length > 0 ? doneOrders.map((n) => `L${n}`).join(', ') : '—'}
                             </td>
                             <td className="p-3">
                               {stuCerts.length === 0 ? (
@@ -1218,10 +1346,12 @@ export const AdminDashboard: React.FC<Props> = ({ session, store, onLogout }) =>
                                       key={c.id}
                                       type="button"
                                       onClick={() => setPreviewCert(c)}
-                                      className="px-2 py-1 text-xs font-extrabold border-2 border-black bg-[#C084FC] inline-flex items-center gap-1 cursor-pointer"
+                                      className={`px-2 py-1 text-xs font-extrabold border-2 border-black inline-flex items-center gap-1 cursor-pointer ${
+                                        c.tierId === 'app_maker' ? 'bg-[#FB7185]' : 'bg-[#C084FC]'
+                                      }`}
                                     >
                                       <Eye className="w-3 h-3" />
-                                      {c.tierId}
+                                      {c.tierId === 'app_maker' ? 'App Maker' : c.tierId}
                                     </button>
                                   ))}
                                 </div>
@@ -1372,6 +1502,62 @@ export const AdminDashboard: React.FC<Props> = ({ session, store, onLogout }) =>
             </div>
           )}
 
+          {/* ADMIN UNLOCKED APP MAKER PREVIEW VIEW */}
+          {activeTab === 'preview' && previewView === 'app_maker' && (
+            <div className="space-y-4">
+              <div className="neo-card bg-[#C084FC]/30 p-4 flex flex-wrap items-center justify-between gap-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      soundEngine.playButtonClick();
+                      setPreviewView('materials');
+                    }}
+                    className="neo-btn bg-white px-3.5 py-2 text-xs font-extrabold inline-flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <ArrowLeft className="w-4 h-4" />
+                    Kembali ke Semua Materi
+                  </button>
+                  <span className="text-xs font-extrabold px-2.5 py-1 bg-[#FFE600] border-2 border-black">
+                    Pratinjau Admin · Seluruh 5 Proyek App Maker Terbuka
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => openSampleCertificate('app_maker')}
+                  className="neo-btn bg-[#FFE600] px-3.5 py-2 text-xs font-extrabold inline-flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Award className="w-4 h-4" />
+                  Pratinjau Sertifikat App Maker
+                </button>
+              </div>
+
+              <AppMakerWorkspace
+                hasAccess={true}
+                isAdminPreview={true}
+                initialProjectId={previewAppProjectId}
+                completedProgressMap={previewAppMakerMap}
+                onOpenCertificates={() => openSampleCertificate('app_maker')}
+                onProjectComplete={async ({ projectId, stars, codeSubmitted }) => {
+                  const rec: ProgressRecord = {
+                    id: `admin_preview_${projectId}`,
+                    studentId: 'admin_preview',
+                    levelId: projectId,
+                    tier: 'app_maker',
+                    stars,
+                    codeSubmitted,
+                    language: 'javascript',
+                    ownerUid: 'admin',
+                    instructorUid: 'admin',
+                    completedAt: new Date().toISOString(),
+                  };
+                  setPreviewAppRecords((prev) => ({ ...prev, [projectId]: rec }));
+                  return { newCertificate: null };
+                }}
+              />
+            </div>
+          )}
+
           {/* ALL MATERIALS & UNLOCKED STUDENT STUDIO PREVIEW TAB */}
           {activeTab === 'preview' && previewView === 'materials' && (
             <div className="space-y-6">
@@ -1379,25 +1565,90 @@ export const AdminDashboard: React.FC<Props> = ({ session, store, onLogout }) =>
                 <div className="space-y-1.5">
                   <div className="inline-flex items-center gap-1.5 bg-white border-2 border-black px-2.5 py-0.5 text-xs font-extrabold">
                     <Unlock className="w-3.5 h-3.5" />
-                    Akses Penuh Administrator · Seluruh 9 Level Terbuka
+                    Akses Penuh Administrator · Seluruh 9 Level Studio &amp; 5 Proyek App Maker Terbuka
                   </div>
                   <h2 className="font-display text-2xl sm:text-3xl font-extrabold">
-                    Seluruh Materi Kurikulum &amp; Studio Peserta
+                    Seluruh Materi Kurikulum, Studio &amp; App Maker
                   </h2>
                   <p className="text-xs sm:text-sm font-semibold text-neutral-900 max-w-2xl leading-relaxed">
-                    Tinjau seluruh materi, misi, petunjuk karakter (Panda, Beruang, Koala), kode awal, pratinjau sertifikat, dan uji langsung
-                    Coding Studio peserta dari Level 1 sampai Level 9 tanpa terkunci (tidak mengubah data siswa).
+                    Tinjau seluruh materi, misi, petunjuk karakter (Panda, Beruang, Koala), pratinjau sertifikat, dan uji langsung
+                    Coding Studio (L1–L9) maupun 5 proyek App Maker tanpa terkunci.
                   </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => openLevelInPreviewStudio(previewLevelId)}
-                  className="neo-btn bg-black text-white px-5 py-3 text-sm font-extrabold inline-flex items-center justify-center gap-2 shrink-0 cursor-pointer"
-                >
-                  <Gamepad2 className="w-5 h-5" />
-                  Buka Coding Studio (L{previewLevel.order})
-                </button>
+                <div className="flex flex-wrap gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => openLevelInPreviewStudio(previewLevelId)}
+                    className="neo-btn bg-black text-white px-4 py-3 text-xs sm:text-sm font-extrabold inline-flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <Gamepad2 className="w-4 h-4" />
+                    Coding Studio (L{previewLevel.order})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => openAppMakerInPreview(null)}
+                    className="neo-btn bg-[#C084FC] px-4 py-3 text-xs sm:text-sm font-extrabold inline-flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <Layers className="w-4 h-4" />
+                    App Maker (5 Proyek)
+                  </button>
+                </div>
               </div>
+
+              {/* App Maker 5 Projects Preview Section */}
+              <section className="space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-3 pb-2 border-b-[3px] border-black">
+                  <div>
+                    <h3 className="font-display text-xl sm:text-2xl font-extrabold flex items-center gap-2">
+                      <Layers className="w-5 h-5 shrink-0" />
+                      Program Panduan App Maker (5 Proyek Interaktif — Semua Terbuka)
+                    </h3>
+                    <p className="text-xs sm:text-sm text-neutral-700 mt-0.5">
+                      Photogram AI, Todo App, Simple Calculator, Color Generatif &amp; Weather App. Di siswa dibuka bertahap jika akses aktif.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => openSampleCertificate('app_maker')}
+                    className="neo-btn bg-[#FFE600] px-3.5 py-2 text-xs font-extrabold inline-flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Award className="w-4 h-4" />
+                    Pratinjau Sertifikat App Maker
+                  </button>
+                </div>
+
+                <div className="grid sm:grid-cols-2 xl:grid-cols-5 gap-4">
+                  {APP_MAKER_PROJECTS.map((proj) => (
+                    <div
+                      key={proj.id}
+                      className="neo-card bg-white p-4 flex flex-col justify-between gap-3"
+                    >
+                      <div className="space-y-2">
+                        <span
+                          className="inline-block px-2 py-0.5 border-2 border-black font-mono text-[11px] font-extrabold"
+                          style={{ backgroundColor: proj.accentColor }}
+                        >
+                          Proyek 0{proj.order} · Terbuka
+                        </span>
+                        <h4 className="font-display text-base font-extrabold leading-tight">
+                          {proj.title}
+                        </h4>
+                        <p className="text-[11px] text-neutral-700 leading-relaxed">
+                          {proj.subtitle}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => openAppMakerInPreview(proj.id)}
+                        className="neo-btn bg-[#C084FC] w-full py-2 px-2.5 text-xs font-extrabold inline-flex items-center justify-center gap-1 cursor-pointer"
+                      >
+                        <Play className="w-3.5 h-3.5 fill-black" />
+                        Uji Proyek 0{proj.order}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </section>
 
               {/* Tier Filter Bar */}
               <div className="flex flex-wrap items-center gap-2">

@@ -40,7 +40,14 @@ export function generateAccessCode(prefix = 'CODE'): string {
 }
 
 export function generateCertificateNo(tierId: string): string {
-  const tierCode = tierId === 'pemula' ? 'PML' : tierId === 'menengah' ? 'MNG' : 'LNJ';
+  const tierCode =
+    tierId === 'app_maker'
+      ? 'APP'
+      : tierId === 'pemula'
+        ? 'PML'
+        : tierId === 'menengah'
+          ? 'MNG'
+          : 'LNJ';
   const rand = Math.floor(1000 + Math.random() * 9000);
   const year = new Date().getFullYear();
   return `CS-${year}-${tierCode}-${rand}`;
