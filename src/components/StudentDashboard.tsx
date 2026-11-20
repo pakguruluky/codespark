@@ -35,6 +35,7 @@ import { dataEngine, isTrialAccessCode } from '../services/dataEngine';
 import { soundEngine } from '../engine/soundEngine';
 import { CodingStudio } from './CodingStudio';
 import { CertificateView } from './CertificateView';
+import { CHARACTER_META, MascotPortrait, getCharacterForLevel } from './PandaMascot';
 import { formatIndonesianDate, formatWhatsAppUrl } from '../utils/crypto';
 
 interface Props {
@@ -495,6 +496,8 @@ export const StudentDashboard: React.FC<Props> = ({
                         const prog = progressByLevel.get(lvl.id);
                         const unlocked = isLevelUnlocked(lvl.order);
                         const completed = Boolean(prog);
+                        const charId = getCharacterForLevel(lvl.order);
+                        const charMeta = CHARACTER_META[charId];
 
                         return (
                           <div
@@ -505,13 +508,22 @@ export const StudentDashboard: React.FC<Props> = ({
                           >
                             <div>
                               <div className="flex items-center justify-between gap-2 mb-3">
-                                <span
-                                  className="px-2.5 py-1 border-2 border-black font-mono text-xs font-extrabold"
-                                  style={{ backgroundColor: unlocked ? tier.accentColor : '#E5E5E5' }}
-                                >
-                                  Level {lvl.order}
-                                </span>
-                                <div className="flex items-center gap-0.5">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span
+                                    className="px-2.5 py-1 border-2 border-black font-mono text-xs font-extrabold"
+                                    style={{ backgroundColor: unlocked ? tier.accentColor : '#E5E5E5' }}
+                                  >
+                                    Level {lvl.order}
+                                  </span>
+                                  <span
+                                    className="px-2 py-0.5 border-2 border-black text-[11px] font-extrabold inline-flex items-center gap-1"
+                                    style={{ backgroundColor: unlocked ? charMeta.badgeBg : '#EFEFEF' }}
+                                  >
+                                    <MascotPortrait character={charId} className="w-5 h-5" mood="happy" />
+                                    {charMeta.name}
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-0.5 shrink-0">
                                   {[1, 2, 3].map((s) => (
                                     <Star
                                       key={s}

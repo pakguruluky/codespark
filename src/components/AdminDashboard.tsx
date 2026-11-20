@@ -53,6 +53,7 @@ import type {
   TierId,
 } from '../types';
 import { dataEngine } from '../services/dataEngine';
+import { CHARACTER_META, MascotPortrait, getCharacterForLevel } from './PandaMascot';
 import { LEVELS, TIERS, getLevelById, getLevelsByTier, getTierMeta } from '../data/levels';
 import { blocksToCode } from '../engine/interpreter';
 import { soundEngine } from '../engine/soundEngine';
@@ -1381,7 +1382,7 @@ export const AdminDashboard: React.FC<Props> = ({ session, store, onLogout }) =>
                     Seluruh Materi Kurikulum &amp; Studio Peserta
                   </h2>
                   <p className="text-xs sm:text-sm font-semibold text-neutral-900 max-w-2xl leading-relaxed">
-                    Tinjau seluruh materi, misi, petunjuk Panda, kode awal, pratinjau sertifikat, dan uji langsung
+                    Tinjau seluruh materi, misi, petunjuk karakter (Panda, Beruang, Koala), kode awal, pratinjau sertifikat, dan uji langsung
                     Coding Studio peserta dari Level 1 sampai Level 9 tanpa terkunci (tidak mengubah data siswa).
                   </p>
                 </div>
@@ -1443,6 +1444,8 @@ export const AdminDashboard: React.FC<Props> = ({ session, store, onLogout }) =>
                           {tierLevels.map((lvl) => {
                             const starterPy = blocksToCode(lvl.starterBlocks, 'python');
                             const testedStars = previewStars[lvl.id] || 0;
+                            const charId = getCharacterForLevel(lvl.order);
+                            const charMeta = CHARACTER_META[charId];
                             return (
                               <div
                                 key={lvl.id}
@@ -1450,13 +1453,22 @@ export const AdminDashboard: React.FC<Props> = ({ session, store, onLogout }) =>
                               >
                                 <div className="space-y-3">
                                   <div className="flex items-center justify-between gap-2">
-                                    <span
-                                      className="px-2.5 py-1 border-2 border-black font-mono text-xs font-extrabold"
-                                      style={{ backgroundColor: tier.accentColor }}
-                                    >
-                                      Level {lvl.order} · Terbuka
-                                    </span>
-                                    <div className="flex items-center gap-0.5" title="Hasil uji coba Admin">
+                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                      <span
+                                        className="px-2.5 py-1 border-2 border-black font-mono text-xs font-extrabold"
+                                        style={{ backgroundColor: tier.accentColor }}
+                                      >
+                                        Level {lvl.order} · Terbuka
+                                      </span>
+                                      <span
+                                        className="px-2 py-0.5 border-2 border-black text-[11px] font-extrabold inline-flex items-center gap-1"
+                                        style={{ backgroundColor: charMeta.badgeBg }}
+                                      >
+                                        <MascotPortrait character={charId} className="w-5 h-5" mood="happy" />
+                                        {charMeta.name}
+                                      </span>
+                                    </div>
+                                    <div className="flex items-center gap-0.5 shrink-0" title="Hasil uji coba Admin">
                                       {[1, 2, 3].map((s) => (
                                         <Star
                                           key={s}
@@ -1489,7 +1501,7 @@ export const AdminDashboard: React.FC<Props> = ({ session, store, onLogout }) =>
                                     <div className="p-2.5 bg-[#38BDF8]/15 border border-black/30 flex items-start gap-1.5">
                                       <Lightbulb className="w-3.5 h-3.5 shrink-0 mt-0.5 text-amber-700" />
                                       <p className="text-neutral-800 leading-relaxed">
-                                        <strong>Hint Panda:</strong> {lvl.hint}
+                                        <strong>Hint {charMeta.name}:</strong> {lvl.hint}
                                       </p>
                                     </div>
 

@@ -16,7 +16,12 @@ import {
   X,
 } from 'lucide-react';
 import type { Direction, LevelDefinition } from '../types';
-import { IsometricPandaSprite, PandaPortrait } from './PandaMascot';
+import {
+  CHARACTER_META,
+  IsometricMascotSprite,
+  MascotPortrait,
+  getCharacterForLevel,
+} from './PandaMascot';
 import { soundEngine } from '../engine/soundEngine';
 
 export type PlaybackSpeed = 'slow' | 'normal' | 'fast';
@@ -98,6 +103,8 @@ export const GameCanvas: React.FC<Props> = ({
 }) => {
   const [settingsOpen, setSettingsOpen] = useState(false);
 
+  const characterId = getCharacterForLevel(level.order);
+  const character = CHARACTER_META[characterId];
   const wallSet = new Set(level.walls.map((w) => `${w.x},${w.y}`));
   const collectedSet = new Set(collectedGems);
 
@@ -315,21 +322,21 @@ export const GameCanvas: React.FC<Props> = ({
     ),
   });
 
-  // Animated Panda Explorer Sprite
-  const pandaPos = toIso(robotX, robotY);
+  // Animated Explorer Mascot Sprite (Panda / Beruang / Koala per stage)
+  const mascotPos = toIso(robotX, robotY);
   const transitionMs = speed === 'slow' ? 500 : speed === 'fast' ? 160 : 300;
   entities.push({
-    key: 'panda',
+    key: `mascot-${characterId}`,
     depth: robotX + robotY + 0.35,
     render: () => (
       <g
-        key="panda"
+        key={`mascot-${characterId}`}
         style={{
-          transform: `translate(${pandaPos.ix}px, ${pandaPos.iy}px)`,
+          transform: `translate(${mascotPos.ix}px, ${mascotPos.iy}px)`,
           transition: `transform ${transitionMs}ms cubic-bezier(0.16, 1, 0.3, 1)`,
         }}
       >
-        <IsometricPandaSprite dir={robotDir} status={status} />
+        <IsometricMascotSprite character={characterId} dir={robotDir} status={status} />
       </g>
     ),
   });
@@ -416,7 +423,7 @@ export const GameCanvas: React.FC<Props> = ({
 
                 {/* Speed */}
                 <div className="space-y-1.5">
-                  <div className="text-xs font-extrabold">Kecepatan Panda</div>
+                  <div className="text-xs font-extrabold">Kecepatan {character.name}</div>
                   <div className="grid grid-cols-3 gap-1.5">
                     {[
                       { id: 'slow' as const, label: '0.5x' },
@@ -508,6 +515,15 @@ export const GameCanvas: React.FC<Props> = ({
             </button>
           </div>
 
+          {/* Active Stage Character Badge */}
+          <div
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-black/50 border border-white/20 text-white text-[11px] font-extrabold shadow"
+            title={`Karakter Stage ${level.order}: ${character.title}`}
+          >
+            <MascotPortrait character={characterId} className="w-6 h-6 shrink-0" mood="happy" />
+            <span>{character.name}</span>
+          </div>
+
           {/* 3 Floating Right-Edge Icon Buttons matching Codementum */}
           <button
             type="button"
@@ -540,7 +556,7 @@ export const GameCanvas: React.FC<Props> = ({
               onToggleTutor();
             }}
             className="cm-arcade-btn bg-gradient-to-b from-[#FFCE4A] to-[#D68910] w-11 h-11 sm:w-12 sm:h-12 relative flex items-center justify-center cursor-pointer"
-            title="Buka / Tutup Panduan Panda (Alt+I)"
+            title={`Buka / Tutup Panduan ${character.name} (Alt+I)`}
           >
             <span className="absolute -top-1 -left-1 px-1 py-0.5 text-[9px] font-mono font-bold bg-black/75 text-white rounded">
               ⌘I
@@ -672,15 +688,15 @@ export const GameCanvas: React.FC<Props> = ({
         </svg>
       </div>
 
-      {/* BOTTOM FLOATING WOODEN PANDA TUTOR DIALOGUE BOX (Exact Codementum signature!) */}
+      {/* BOTTOM FLOATING WOODEN EXPLORER TUTOR DIALOGUE BOX */}
       <div className="relative z-20 px-3 pb-3 sm:px-4 sm:pb-4">
         {errorMsg ? (
           <div className="cm-wood-dialog p-3.5 sm:p-4 flex flex-col sm:flex-row items-center gap-3 sm:gap-4 border-[#FB7185]">
-            <PandaPortrait className="w-20 h-20 shrink-0" mood="oops" />
+            <MascotPortrait character={characterId} className="w-20 h-20 shrink-0" mood="oops" />
             <div className="flex-1 text-center sm:text-left space-y-1">
               <div className="text-xs font-extrabold text-[#FFE600] flex items-center justify-center sm:justify-start gap-1.5">
                 <AlertTriangle className="w-4 h-4" />
-                Ups, Perlu Perbaikan!
+                Ups, {character.name} Perlu Bantuan!
               </div>
               <p className="text-sm font-semibold text-[#FFF4DC] leading-relaxed">{errorMsg}</p>
             </div>
@@ -697,7 +713,8 @@ export const GameCanvas: React.FC<Props> = ({
           </div>
         ) : showTutor ? (
           <div className="cm-wood-dialog p-3.5 sm:p-4 flex flex-col sm:flex-row items-center gap-3 sm:gap-4">
-            <PandaPortrait
+            <MascotPortrait
+              character={characterId}
               className="w-20 h-20 sm:w-24 sm:h-24 shrink-0 -my-2"
               mood={status === 'success' ? 'excited' : 'happy'}
             />
@@ -705,6 +722,13 @@ export const GameCanvas: React.FC<Props> = ({
               <div className="text-xs font-extrabold text-[#FFE600] flex flex-wrap items-center justify-center sm:justify-start gap-2">
                 <span>
                   Level {level.order}: {level.title}
+                </span>
+                <span className="text-[#F5E3B3]/80">·</span>
+                <span
+                  className="px-1.5 py-0.5 rounded text-[10px] font-extrabold text-black border border-[#4A2508]"
+                  style={{ backgroundColor: character.badgeBg }}
+                >
+                  {character.title}
                 </span>
                 <span className="text-[#F5E3B3]/80">·</span>
                 <span className="text-[#A7F3D0]">

@@ -426,11 +426,18 @@ function coordKey(x: number, y: number): string {
   return `${x},${y}`;
 }
 
+const STAGE_CHARACTER_NAMES = ['Panda', 'Beruang', 'Koala'] as const;
+
+function getStageCharacterName(order: number): string {
+  return STAGE_CHARACTER_NAMES[Math.max(0, Math.floor(order) - 1) % STAGE_CHARACTER_NAMES.length];
+}
+
 export function executeCode(
   code: string,
   language: CodeLanguage,
   level: LevelDefinition
 ): ExecutionResult {
+  const characterName = getStageCharacterName(level.order);
   const trimmed = code.trim();
   if (!trimmed) {
     return {
@@ -450,7 +457,7 @@ export function executeCode(
       success: false,
       stars: 0,
       lineCount: 0,
-      errorMessage: 'Kode masih kosong! Susun minimal 1 perintah untuk menggerakkan Panda.',
+      errorMessage: `Kode masih kosong! Susun minimal 1 perintah untuk menggerakkan ${characterName}.`,
       errorLine: 1,
     };
   }
@@ -527,7 +534,7 @@ export function executeCode(
     const nextY = y + DIR_DELTA[dir].dy;
     if (isCellBlocked(nextX, nextY)) {
       crashed = true;
-      finalError = `Ups! Panda menabrak rintangan atau batas pulau pada baris ${line}. Coba belok dulu!`;
+      finalError = `Ups! ${characterName} menabrak rintangan atau batas pulau pada baris ${line}. Coba belok dulu!`;
       errorLine = line;
       frames.push({
         x,
@@ -638,9 +645,9 @@ export function executeCode(
   if (!crashed) {
     const missingGems = level.gems.length - collected.size;
     if (x === level.goal.x && y === level.goal.y && missingGems > 0) {
-      finalError = `Panda sudah sampai di titik tujuan, tapi masih ada ${missingGems} permata yang belum diambil!`;
+      finalError = `${characterName} sudah sampai di titik tujuan, tapi masih ada ${missingGems} permata yang belum diambil!`;
     } else {
-      finalError = `Program selesai, namun Panda belum sampai ke titik tujuan (permata terkumpul: ${collected.size}/${level.gems.length}).`;
+      finalError = `Program selesai, namun ${characterName} belum sampai ke titik tujuan (permata terkumpul: ${collected.size}/${level.gems.length}).`;
     }
     frames.push({
       x,

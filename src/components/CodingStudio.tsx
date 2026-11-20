@@ -28,6 +28,7 @@ import type {
 import { blocksToCode, executeCode } from '../engine/interpreter';
 import { soundEngine } from '../engine/soundEngine';
 import { GameCanvas, type PlaybackSpeed } from './GameCanvas';
+import { CHARACTER_META, getCharacterForLevel } from './PandaMascot';
 
 interface Props {
   level: LevelDefinition;
@@ -104,13 +105,17 @@ export const CodingStudio: React.FC<Props> = ({
   const [sfxEnabled, setSfxEnabled] = useState(() => soundEngine.isSfxEnabled());
   const [bgmEnabled, setBgmEnabled] = useState(() => soundEngine.isBgmEnabled());
 
+  const stageCharacter = CHARACTER_META[getCharacterForLevel(level.order)];
+
   // Simulation State
   const [robotX, setRobotX] = useState(level.start.x);
   const [robotY, setRobotY] = useState(level.start.y);
   const [robotDir, setRobotDir] = useState<Direction>(level.start.dir);
   const [collectedGems, setCollectedGems] = useState<string[]>([]);
   const [status, setStatus] = useState<'idle' | 'running' | 'success' | 'crashed' | 'incomplete'>('idle');
-  const [actionLabel, setActionLabel] = useState('Klik tombol ▶ untuk menjalankan Panda!');
+  const [actionLabel, setActionLabel] = useState(
+    `Klik tombol ▶ untuk menjalankan ${stageCharacter.name}!`
+  );
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [activeLine, setActiveLine] = useState<number | null>(null);
 
@@ -143,7 +148,9 @@ export const CodingStudio: React.FC<Props> = ({
     setRobotDir(level.start.dir);
     setCollectedGems([]);
     setStatus('idle');
-    setActionLabel('Klik tombol ▶ untuk menjalankan Panda!');
+    setActionLabel(
+      `Klik tombol ▶ untuk menjalankan ${CHARACTER_META[getCharacterForLevel(level.order)].name}!`
+    );
     setErrorMsg(null);
     setActiveLine(null);
     setVictoryData(null);
@@ -337,7 +344,7 @@ export const CodingStudio: React.FC<Props> = ({
     setRobotDir(level.start.dir);
     setCollectedGems([]);
     setStatus('running');
-    setActionLabel('Panda mulai melangkah...');
+    setActionLabel(`${stageCharacter.name} mulai melangkah...`);
 
     const stepDelay = speed === 'slow' ? 580 : speed === 'fast' ? 190 : 360;
 
@@ -982,7 +989,7 @@ export const CodingStudio: React.FC<Props> = ({
             {/* Bottom Info Bar inside Parchment */}
             <div className="px-3 py-2 border-t border-[#8C5A2B]/35 bg-[#E6C776]/70 flex items-center justify-between text-[11px] font-extrabold text-[#5C3210]">
               <span>
-                Tingkat {level.tierLabel} · Level {level.order}
+                Tingkat {level.tierLabel} · Level {level.order} · {stageCharacter.name}
               </span>
               <div className="flex items-center gap-1">
                 <span>Skor Terbaik:</span>
