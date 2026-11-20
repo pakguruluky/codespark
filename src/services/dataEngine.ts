@@ -20,7 +20,7 @@ import {
 } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth, db, handleFirestoreError, OperationType } from '../lib/firebase';
-import { isFirebaseConfigured } from '../firebaseConfig.js';
+import { firebaseConfig, isFirebaseConfigured } from '../firebaseConfig.js';
 import type {
   AccessCode,
   AppSettings,
@@ -305,6 +305,12 @@ class CodeSparkDataEngine {
           }
         };
       }
+
+      window.addEventListener('online', () => {
+        if (this.snapshot.mode === 'local' && isFirebaseConfigured()) {
+          void this.retryFirebaseConnection();
+        }
+      });
     }
 
     if (isFirebaseConfigured() && auth && db) {
@@ -401,15 +407,21 @@ class CodeSparkDataEngine {
         this.fallbackToLocal(
           'auth_required',
           opts.directMode
-            ? 'Aturan keamanan Firestore (firestore.rules) aktif. Klik "Hubungkan Firebase (Google)" untuk menyalakan sinkronisasi cloud realtime.'
-            : 'Akun Google Anda belum mendapat izin baca/tulis pada Firestore rules proyek ini.',
+            ? `Aturan keamanan Firestore pada ${firebaseConfig.projectId} membutuhkan izin akses. Klik "Hubungkan Firebase (Google)" atau sesuaikan Rules di Firebase Console.`
+            : `Akun Google Anda belum mendapat izin baca/tulis pada Firestore Rules proyek ${firebaseConfig.projectId}.`,
           opts.email
         );
         return;
       }
+      const rawMsg = error instanceof Error ? error.message : String(error);
+      const dbNotFound =
+        rawMsg.toLowerCase().includes('does not exist') ||
+        rawMsg.toLowerCase().includes('not-found');
       this.fallbackToLocal(
         'offline',
-        'Cloud Firestore (default) pada proyek codespark-a5c49 belum dapat dijangkau. Pastikan Cloud Firestore sudah dibuat di Firebase Console.',
+        dbNotFound
+          ? `Database Cloud Firestore (${firebaseConfig.firestoreDatabaseId || '(default)'}) belum dibuat pada proyek ${firebaseConfig.projectId}. Buka Firebase Console → Firestore Database → Create database.`
+          : `Cloud Firestore (${firebaseConfig.firestoreDatabaseId || '(default)'}) pada proyek ${firebaseConfig.projectId} belum dapat dijangkau (${rawMsg}). Periksa koneksi internet atau status Firestore di Firebase Console.`,
         opts.email
       );
       return;

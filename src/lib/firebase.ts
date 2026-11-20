@@ -41,23 +41,26 @@ let authInstance: Auth | null = null;
 
 if (isFirebaseConfigured()) {
   try {
-    app = initializeApp(firebaseConfig);
-    const useNamedDb =
-      Boolean(firebaseConfig.firestoreDatabaseId) &&
-      firebaseConfig.firestoreDatabaseId !== '(default)';
+    const coreConfig = {
+      apiKey: firebaseConfig.apiKey,
+      authDomain: firebaseConfig.authDomain,
+      projectId: firebaseConfig.projectId,
+      storageBucket: firebaseConfig.storageBucket,
+      messagingSenderId: firebaseConfig.messagingSenderId,
+      appId: firebaseConfig.appId,
+    };
+
+    app = initializeApp(coreConfig);
+
+    const databaseId = (firebaseConfig.firestoreDatabaseId || '').trim();
+    const useNamedDb = Boolean(databaseId) && databaseId !== '(default)';
 
     try {
       dbInstance = useNamedDb
-        ? initializeFirestore(
-            app,
-            { experimentalAutoDetectLongPolling: true },
-            firebaseConfig.firestoreDatabaseId
-          )
+        ? initializeFirestore(app, { experimentalAutoDetectLongPolling: true }, databaseId)
         : initializeFirestore(app, { experimentalAutoDetectLongPolling: true });
     } catch {
-      dbInstance = useNamedDb
-        ? getFirestore(app, firebaseConfig.firestoreDatabaseId)
-        : getFirestore(app);
+      dbInstance = useNamedDb ? getFirestore(app, databaseId) : getFirestore(app);
     }
 
     authInstance = getAuth(app);

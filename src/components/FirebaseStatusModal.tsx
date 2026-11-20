@@ -31,8 +31,7 @@ export const firebaseConfig = {
   projectId: "${firebaseConfig.projectId}",
   storageBucket: "${firebaseConfig.storageBucket}",
   messagingSenderId: "${firebaseConfig.messagingSenderId}",
-  appId: "${firebaseConfig.appId}",
-  firestoreDatabaseId: "${firebaseConfig.firestoreDatabaseId}"
+  appId: "${firebaseConfig.appId}"
 };`;
 
 export const FirebaseStatusModal: React.FC<Props> = ({
