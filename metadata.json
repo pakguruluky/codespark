@@ -1,6 +1,6 @@
 {
   "name": "CodeSpark",
   "description": "Platform edukasi coding dan AI interaktif berbasis game 2D (Block-to-Text Python & JavaScript), manajemen kelas multi-role realtime, dan sertifikat otomatis.",
-  "requestFramePermissions": [],
+  "requestFramePermissions": ["camera"],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

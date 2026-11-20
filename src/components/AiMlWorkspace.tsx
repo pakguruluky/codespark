@@ -22,6 +22,11 @@ import {
   RefreshCw,
   Eye,
   Sliders,
+  FlipHorizontal2,
+  SwitchCamera,
+  Pause,
+  Loader2,
+  Zap,
 } from 'lucide-react';
 import type { AiMlProjectId, CertificateRecord, ProgressRecord } from '../types';
 import {
@@ -32,6 +37,16 @@ import {
 } from '../data/aiMlProjects';
 import { soundEngine } from '../engine/soundEngine';
 import { formatWhatsAppUrl } from '../utils/crypto';
+import {
+  FastCartoonizerProcessor,
+  detectFacesFallbackFromPixels,
+  drawSourceCover,
+  mlFaceEngine,
+  startRealCameraStream,
+  stopMediaStream,
+  type DetectedFace,
+  type MlEngineStatus,
+} from '../engine/mlVisionEngine';
 
 interface Props {
   hasAccess: boolean;
@@ -57,24 +72,14 @@ const CATEGORY_COLORS: Record<string, string> = {
   OUTPUT: '#4ADE80',
 };
 
+const CANVAS_W = 480;
+const CANVAS_H = 360;
+
 // ===================== SHARED PROCEDURAL SAMPLE SCENES =====================
-// Drawn cleanly onto an offscreen canvas so pixel processing works 100% offline/CORS-free
+// Drawn cleanly onto canvas so sample testing works 100% offline/CORS-free
 
 type CartoonSampleId = 'student' | 'panda' | 'city';
 type FaceSampleId = 'smile' | 'group' | 'surprised';
-
-interface DetectedFace {
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-  confidence: number;
-  expression: string;
-  leftEye: { x: number; y: number };
-  rightEye: { x: number; y: number };
-  nose: { x: number; y: number };
-  mouth: { x: number; y: number };
-}
 
 function drawCartoonSampleScene(
   ctx: CanvasRenderingContext2D,
@@ -94,104 +99,104 @@ function drawCartoonSampleScene(
     // Sun & hills
     ctx.fillStyle = '#FDE047';
     ctx.beginPath();
-    ctx.arc(w * 0.84, h * 0.2, 26, 0, Math.PI * 2);
+    ctx.arc(w * 0.84, h * 0.2, 34, 0, Math.PI * 2);
     ctx.fill();
 
     ctx.fillStyle = '#86EFAC';
     ctx.beginPath();
-    ctx.ellipse(w * 0.25, h * 0.96, 170, 62, 0, 0, Math.PI * 2);
+    ctx.ellipse(w * 0.25, h * 0.96, 220, 82, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.fillStyle = '#4ADE80';
     ctx.beginPath();
-    ctx.ellipse(w * 0.78, h * 0.98, 180, 56, 0, 0, Math.PI * 2);
+    ctx.ellipse(w * 0.78, h * 0.98, 240, 74, 0, 0, Math.PI * 2);
     ctx.fill();
 
     // Hoodie shoulders
     ctx.fillStyle = '#2563EB';
     ctx.beginPath();
-    ctx.ellipse(w * 0.5, h * 0.94, 86, 58, 0, Math.PI, Math.PI * 2);
+    ctx.ellipse(w * 0.5, h * 0.94, 114, 78, 0, Math.PI, Math.PI * 2);
     ctx.fill();
     ctx.fillStyle = '#FACC15';
-    ctx.fillRect(w * 0.5 - 22, h * 0.78, 44, 26);
+    ctx.fillRect(w * 0.5 - 28, h * 0.78, 56, 36);
 
     // Neck
     ctx.fillStyle = '#F5C6A5';
-    ctx.fillRect(w * 0.5 - 16, h * 0.63, 32, 26);
+    ctx.fillRect(w * 0.5 - 20, h * 0.63, 40, 34);
 
     // Ears
     ctx.fillStyle = '#F3B892';
     ctx.beginPath();
-    ctx.arc(w * 0.5 - 52, h * 0.45, 13, 0, Math.PI * 2);
-    ctx.arc(w * 0.5 + 52, h * 0.45, 13, 0, Math.PI * 2);
+    ctx.arc(w * 0.5 - 68, h * 0.45, 17, 0, Math.PI * 2);
+    ctx.arc(w * 0.5 + 68, h * 0.45, 17, 0, Math.PI * 2);
     ctx.fill();
 
     // Head with soft skin shading
-    const skin = ctx.createRadialGradient(w * 0.47, h * 0.4, 10, w * 0.5, h * 0.45, 62);
+    const skin = ctx.createRadialGradient(w * 0.47, h * 0.4, 14, w * 0.5, h * 0.45, 84);
     skin.addColorStop(0, '#FFE4CC');
     skin.addColorStop(1, '#EBB08A');
     ctx.fillStyle = skin;
     ctx.beginPath();
-    ctx.ellipse(w * 0.5, h * 0.45, 52, 60, 0, 0, Math.PI * 2);
+    ctx.ellipse(w * 0.5, h * 0.45, 68, 82, 0, 0, Math.PI * 2);
     ctx.fill();
 
     // Hair
     ctx.fillStyle = '#1E293B';
     ctx.beginPath();
-    ctx.ellipse(w * 0.5, h * 0.28, 56, 36, 0, Math.PI, Math.PI * 2);
+    ctx.ellipse(w * 0.5, h * 0.28, 74, 48, 0, Math.PI, Math.PI * 2);
     ctx.fill();
     ctx.beginPath();
-    ctx.moveTo(w * 0.5 - 54, h * 0.3);
-    ctx.quadraticCurveTo(w * 0.5 - 20, h * 0.14, w * 0.5 + 54, h * 0.3);
-    ctx.quadraticCurveTo(w * 0.5 + 10, h * 0.34, w * 0.5 - 54, h * 0.3);
+    ctx.moveTo(w * 0.5 - 70, h * 0.3);
+    ctx.quadraticCurveTo(w * 0.5 - 26, h * 0.14, w * 0.5 + 70, h * 0.3);
+    ctx.quadraticCurveTo(w * 0.5 + 14, h * 0.34, w * 0.5 - 70, h * 0.3);
     ctx.fill();
 
     // Cheeks
     ctx.fillStyle = 'rgba(244, 114, 182, 0.35)';
     ctx.beginPath();
-    ctx.ellipse(w * 0.5 - 28, h * 0.51, 11, 7, 0, 0, Math.PI * 2);
-    ctx.ellipse(w * 0.5 + 28, h * 0.51, 11, 7, 0, 0, Math.PI * 2);
+    ctx.ellipse(w * 0.5 - 36, h * 0.51, 14, 9, 0, 0, Math.PI * 2);
+    ctx.ellipse(w * 0.5 + 36, h * 0.51, 14, 9, 0, 0, Math.PI * 2);
     ctx.fill();
 
     // Eyes
     ctx.fillStyle = '#FFFFFF';
     ctx.beginPath();
-    ctx.ellipse(w * 0.5 - 20, h * 0.43, 11, 8, 0, 0, Math.PI * 2);
-    ctx.ellipse(w * 0.5 + 20, h * 0.43, 11, 8, 0, 0, Math.PI * 2);
+    ctx.ellipse(w * 0.5 - 26, h * 0.43, 14, 11, 0, 0, Math.PI * 2);
+    ctx.ellipse(w * 0.5 + 26, h * 0.43, 14, 11, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.fillStyle = '#0F172A';
     ctx.beginPath();
-    ctx.arc(w * 0.5 - 19, h * 0.43, 5.5, 0, Math.PI * 2);
-    ctx.arc(w * 0.5 + 21, h * 0.43, 5.5, 0, Math.PI * 2);
+    ctx.arc(w * 0.5 - 25, h * 0.43, 7, 0, Math.PI * 2);
+    ctx.arc(w * 0.5 + 27, h * 0.43, 7, 0, Math.PI * 2);
     ctx.fill();
     ctx.fillStyle = '#FFFFFF';
     ctx.beginPath();
-    ctx.arc(w * 0.5 - 21, h * 0.41, 2, 0, Math.PI * 2);
-    ctx.arc(w * 0.5 + 19, h * 0.41, 2, 0, Math.PI * 2);
+    ctx.arc(w * 0.5 - 28, h * 0.41, 2.6, 0, Math.PI * 2);
+    ctx.arc(w * 0.5 + 24, h * 0.41, 2.6, 0, Math.PI * 2);
     ctx.fill();
 
     // Eyebrows & Nose & Smile
     ctx.strokeStyle = '#1E293B';
-    ctx.lineWidth = 3.5;
+    ctx.lineWidth = 4.5;
     ctx.lineCap = 'round';
     ctx.beginPath();
-    ctx.moveTo(w * 0.5 - 30, h * 0.35);
-    ctx.quadraticCurveTo(w * 0.5 - 20, h * 0.31, w * 0.5 - 10, h * 0.35);
-    ctx.moveTo(w * 0.5 + 10, h * 0.35);
-    ctx.quadraticCurveTo(w * 0.5 + 20, h * 0.31, w * 0.5 + 30, h * 0.35);
+    ctx.moveTo(w * 0.5 - 40, h * 0.35);
+    ctx.quadraticCurveTo(w * 0.5 - 26, h * 0.31, w * 0.5 - 12, h * 0.35);
+    ctx.moveTo(w * 0.5 + 12, h * 0.35);
+    ctx.quadraticCurveTo(w * 0.5 + 26, h * 0.31, w * 0.5 + 40, h * 0.35);
     ctx.stroke();
 
     ctx.strokeStyle = '#C27D56';
-    ctx.lineWidth = 2.5;
+    ctx.lineWidth = 3;
     ctx.beginPath();
     ctx.moveTo(w * 0.5, h * 0.46);
-    ctx.lineTo(w * 0.5 - 4, h * 0.53);
-    ctx.lineTo(w * 0.5 + 4, h * 0.53);
+    ctx.lineTo(w * 0.5 - 5, h * 0.53);
+    ctx.lineTo(w * 0.5 + 5, h * 0.53);
     ctx.stroke();
 
     ctx.strokeStyle = '#BE123C';
-    ctx.lineWidth = 3.5;
+    ctx.lineWidth = 4.5;
     ctx.beginPath();
-    ctx.arc(w * 0.5, h * 0.55, 16, 0.15 * Math.PI, 0.85 * Math.PI);
+    ctx.arc(w * 0.5, h * 0.55, 22, 0.15 * Math.PI, 0.85 * Math.PI);
     ctx.stroke();
     return;
   }
@@ -205,11 +210,11 @@ function drawCartoonSampleScene(
 
     // Bamboo stalks
     ctx.fillStyle = '#059669';
-    [34, 62, w - 58, w - 28].forEach((bx) => {
-      ctx.fillRect(bx, 0, 12, h);
+    [42, 78, w - 76, w - 38].forEach((bx) => {
+      ctx.fillRect(bx, 0, 16, h);
       ctx.fillStyle = '#047857';
-      for (let y = 30; y < h; y += 52) {
-        ctx.fillRect(bx - 2, y, 16, 4);
+      for (let y = 36; y < h; y += 64) {
+        ctx.fillRect(bx - 3, y, 22, 5);
       }
       ctx.fillStyle = '#059669';
     });
@@ -217,60 +222,60 @@ function drawCartoonSampleScene(
     // Panda ears
     ctx.fillStyle = '#18181B';
     ctx.beginPath();
-    ctx.arc(w * 0.5 - 52, h * 0.25, 22, 0, Math.PI * 2);
-    ctx.arc(w * 0.5 + 52, h * 0.25, 22, 0, Math.PI * 2);
+    ctx.arc(w * 0.5 - 70, h * 0.25, 29, 0, Math.PI * 2);
+    ctx.arc(w * 0.5 + 70, h * 0.25, 29, 0, Math.PI * 2);
     ctx.fill();
 
     // Body
     ctx.fillStyle = '#18181B';
     ctx.beginPath();
-    ctx.ellipse(w * 0.5, h * 0.86, 66, 52, 0, Math.PI, Math.PI * 2);
+    ctx.ellipse(w * 0.5, h * 0.86, 88, 72, 0, Math.PI, Math.PI * 2);
     ctx.fill();
     ctx.fillStyle = '#F8FAFC';
     ctx.beginPath();
-    ctx.ellipse(w * 0.5, h * 0.9, 42, 34, 0, Math.PI, Math.PI * 2);
+    ctx.ellipse(w * 0.5, h * 0.9, 56, 46, 0, Math.PI, Math.PI * 2);
     ctx.fill();
 
     // Head
-    const headGrad = ctx.createRadialGradient(w * 0.45, h * 0.42, 10, w * 0.5, h * 0.47, 68);
+    const headGrad = ctx.createRadialGradient(w * 0.45, h * 0.42, 14, w * 0.5, h * 0.47, 92);
     headGrad.addColorStop(0, '#FFFFFF');
     headGrad.addColorStop(1, '#E2E8F0');
     ctx.fillStyle = headGrad;
     ctx.beginPath();
-    ctx.ellipse(w * 0.5, h * 0.48, 66, 58, 0, 0, Math.PI * 2);
+    ctx.ellipse(w * 0.5, h * 0.48, 88, 80, 0, 0, Math.PI * 2);
     ctx.fill();
 
     // Eye patches
     ctx.fillStyle = '#18181B';
     ctx.beginPath();
-    ctx.ellipse(w * 0.5 - 24, h * 0.46, 17, 21, -0.25, 0, Math.PI * 2);
-    ctx.ellipse(w * 0.5 + 24, h * 0.46, 17, 21, 0.25, 0, Math.PI * 2);
+    ctx.ellipse(w * 0.5 - 32, h * 0.46, 22, 28, -0.25, 0, Math.PI * 2);
+    ctx.ellipse(w * 0.5 + 32, h * 0.46, 22, 28, 0.25, 0, Math.PI * 2);
     ctx.fill();
 
     // Eyes
     ctx.fillStyle = '#FFFFFF';
     ctx.beginPath();
-    ctx.arc(w * 0.5 - 22, h * 0.44, 6, 0, Math.PI * 2);
-    ctx.arc(w * 0.5 + 22, h * 0.44, 6, 0, Math.PI * 2);
+    ctx.arc(w * 0.5 - 29, h * 0.44, 8, 0, Math.PI * 2);
+    ctx.arc(w * 0.5 + 29, h * 0.44, 8, 0, Math.PI * 2);
     ctx.fill();
     ctx.fillStyle = '#0F172A';
     ctx.beginPath();
-    ctx.arc(w * 0.5 - 21, h * 0.44, 3, 0, Math.PI * 2);
-    ctx.arc(w * 0.5 + 21, h * 0.44, 3, 0, Math.PI * 2);
+    ctx.arc(w * 0.5 - 28, h * 0.44, 4, 0, Math.PI * 2);
+    ctx.arc(w * 0.5 + 28, h * 0.44, 4, 0, Math.PI * 2);
     ctx.fill();
 
     // Nose & smile
     ctx.fillStyle = '#18181B';
     ctx.beginPath();
-    ctx.ellipse(w * 0.5, h * 0.56, 10, 7, 0, 0, Math.PI * 2);
+    ctx.ellipse(w * 0.5, h * 0.56, 13, 9, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.strokeStyle = '#18181B';
-    ctx.lineWidth = 3;
+    ctx.lineWidth = 4;
     ctx.beginPath();
-    ctx.arc(w * 0.5 - 8, h * 0.62, 8, 0, Math.PI * 0.9);
+    ctx.arc(w * 0.5 - 11, h * 0.62, 11, 0, Math.PI * 0.9);
     ctx.stroke();
     ctx.beginPath();
-    ctx.arc(w * 0.5 + 8, h * 0.62, 8, Math.PI * 0.1, Math.PI);
+    ctx.arc(w * 0.5 + 11, h * 0.62, 11, Math.PI * 0.1, Math.PI);
     ctx.stroke();
     return;
   }
@@ -286,31 +291,31 @@ function drawCartoonSampleScene(
   // Giant Sun
   ctx.fillStyle = '#FFFBEB';
   ctx.beginPath();
-  ctx.arc(w * 0.5, h * 0.45, 48, 0, Math.PI * 2);
+  ctx.arc(w * 0.5, h * 0.44, 62, 0, Math.PI * 2);
   ctx.fill();
 
   // Clouds
   ctx.fillStyle = '#FFE4E6';
   ctx.beginPath();
-  ctx.ellipse(w * 0.22, h * 0.22, 42, 14, 0, 0, Math.PI * 2);
-  ctx.ellipse(w * 0.76, h * 0.26, 48, 15, 0, 0, Math.PI * 2);
+  ctx.ellipse(w * 0.22, h * 0.22, 56, 18, 0, 0, Math.PI * 2);
+  ctx.ellipse(w * 0.76, h * 0.26, 64, 20, 0, 0, Math.PI * 2);
   ctx.fill();
 
   // Buildings
   const buildings = [
-    { x: 16, y: 120, bw: 56, bh: 150, c: '#312E81' },
-    { x: 80, y: 84, bw: 62, bh: 186, c: '#4338CA' },
-    { x: 152, y: 132, bw: 58, bh: 138, c: '#1E1B4B' },
-    { x: 220, y: 95, bw: 66, bh: 175, c: '#3730A3' },
-    { x: 294, y: 128, bw: 54, bh: 142, c: '#312E81' },
+    { x: 20, y: 170, bw: 76, bh: 210, c: '#312E81' },
+    { x: 106, y: 120, bw: 84, bh: 260, c: '#4338CA' },
+    { x: 202, y: 186, bw: 78, bh: 194, c: '#1E1B4B' },
+    { x: 292, y: 136, bw: 88, bh: 244, c: '#3730A3' },
+    { x: 392, y: 182, bw: 72, bh: 198, c: '#312E81' },
   ];
   buildings.forEach((b) => {
     ctx.fillStyle = b.c;
     ctx.fillRect(b.x, b.y, b.bw, b.bh);
     ctx.fillStyle = '#FDE047';
-    for (let wy = b.y + 14; wy < h - 24; wy += 22) {
-      for (let wx = b.x + 10; wx < b.x + b.bw - 12; wx += 18) {
-        ctx.fillRect(wx, wy, 9, 12);
+    for (let wy = b.y + 18; wy < h - 24; wy += 28) {
+      for (let wx = b.x + 12; wx < b.x + b.bw - 14; wx += 22) {
+        ctx.fillRect(wx, wy, 12, 16);
       }
     }
   });
@@ -328,16 +333,15 @@ function drawFaceSampleScene(
   ctx.fillStyle = bg;
   ctx.fillRect(0, 0, w, h);
 
-  // Subtle studio grid lines
   ctx.strokeStyle = 'rgba(148,163,184,0.22)';
   ctx.lineWidth = 1;
-  for (let gx = 0; gx < w; gx += 28) {
+  for (let gx = 0; gx < w; gx += 32) {
     ctx.beginPath();
     ctx.moveTo(gx, 0);
     ctx.lineTo(gx, h);
     ctx.stroke();
   }
-  for (let gy = 0; gy < h; gy += 28) {
+  for (let gy = 0; gy < h; gy += 32) {
     ctx.beginPath();
     ctx.moveTo(0, gy);
     ctx.lineTo(w, gy);
@@ -353,28 +357,24 @@ function drawFaceSampleScene(
     mood: 'smile' | 'focus' | 'surprised',
     confidence: number
   ): DetectedFace => {
-    const rx = 46 * scale;
-    const ry = 54 * scale;
+    const rx = 62 * scale;
+    const ry = 74 * scale;
 
-    // Shoulders
     ctx.fillStyle = shirtColor;
     ctx.beginPath();
     ctx.ellipse(cx, cy + ry * 1.65, rx * 1.45, ry * 0.85, 0, Math.PI, Math.PI * 2);
     ctx.fill();
 
-    // Neck
     ctx.fillStyle = '#EAB694';
-    ctx.fillRect(cx - 12 * scale, cy + ry * 0.72, 24 * scale, 24 * scale);
+    ctx.fillRect(cx - 16 * scale, cy + ry * 0.72, 32 * scale, 32 * scale);
 
-    // Ears
     ctx.fillStyle = '#EAB694';
     ctx.beginPath();
-    ctx.arc(cx - rx, cy + 2 * scale, 10 * scale, 0, Math.PI * 2);
-    ctx.arc(cx + rx, cy + 2 * scale, 10 * scale, 0, Math.PI * 2);
+    ctx.arc(cx - rx, cy + 2 * scale, 13 * scale, 0, Math.PI * 2);
+    ctx.arc(cx + rx, cy + 2 * scale, 13 * scale, 0, Math.PI * 2);
     ctx.fill();
 
-    // Face oval
-    const skin = ctx.createRadialGradient(cx - 10 * scale, cy - 10 * scale, 8, cx, cy, ry * 1.15);
+    const skin = ctx.createRadialGradient(cx - 12 * scale, cy - 12 * scale, 10, cx, cy, ry * 1.15);
     skin.addColorStop(0, '#FFE4CC');
     skin.addColorStop(1, '#E6A882');
     ctx.fillStyle = skin;
@@ -382,77 +382,73 @@ function drawFaceSampleScene(
     ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
     ctx.fill();
 
-    // Hair
     ctx.fillStyle = hairColor;
     ctx.beginPath();
     ctx.ellipse(cx, cy - ry * 0.56, rx * 1.08, ry * 0.58, 0, Math.PI, Math.PI * 2);
     ctx.fill();
 
-    const eyeY = cy - 6 * scale;
-    const leftEye = { x: cx - 18 * scale, y: eyeY };
-    const rightEye = { x: cx + 18 * scale, y: eyeY };
-    const nose = { x: cx, y: cy + 12 * scale };
-    const mouth = { x: cx, y: cy + 29 * scale };
+    const eyeY = cy - 8 * scale;
+    const leftEye = { x: cx - 24 * scale, y: eyeY };
+    const rightEye = { x: cx + 24 * scale, y: eyeY };
+    const nose = { x: cx, y: cy + 16 * scale };
+    const mouth = { x: cx, y: cy + 40 * scale };
+    const forehead = { x: cx, y: cy - ry * 0.86 };
 
-    // Eyes
     ctx.fillStyle = '#FFFFFF';
     ctx.beginPath();
-    ctx.ellipse(leftEye.x, leftEye.y, 9 * scale, (mood === 'surprised' ? 9 : 6.5) * scale, 0, 0, Math.PI * 2);
-    ctx.ellipse(rightEye.x, rightEye.y, 9 * scale, (mood === 'surprised' ? 9 : 6.5) * scale, 0, 0, Math.PI * 2);
+    ctx.ellipse(leftEye.x, leftEye.y, 12 * scale, (mood === 'surprised' ? 12 : 8.5) * scale, 0, 0, Math.PI * 2);
+    ctx.ellipse(rightEye.x, rightEye.y, 12 * scale, (mood === 'surprised' ? 12 : 8.5) * scale, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.fillStyle = '#0F172A';
     ctx.beginPath();
-    ctx.arc(leftEye.x, leftEye.y, 4.5 * scale, 0, Math.PI * 2);
-    ctx.arc(rightEye.x, rightEye.y, 4.5 * scale, 0, Math.PI * 2);
+    ctx.arc(leftEye.x, leftEye.y, 6 * scale, 0, Math.PI * 2);
+    ctx.arc(rightEye.x, rightEye.y, 6 * scale, 0, Math.PI * 2);
     ctx.fill();
 
-    // Eyebrows
     ctx.strokeStyle = hairColor;
-    ctx.lineWidth = 3 * scale;
+    ctx.lineWidth = 4 * scale;
     ctx.lineCap = 'round';
-    const browLift = mood === 'surprised' ? 18 * scale : 13 * scale;
+    const browLift = mood === 'surprised' ? 24 * scale : 17 * scale;
     ctx.beginPath();
-    ctx.moveTo(leftEye.x - 10 * scale, eyeY - browLift);
-    ctx.quadraticCurveTo(leftEye.x, eyeY - browLift - 5 * scale, leftEye.x + 9 * scale, eyeY - browLift);
-    ctx.moveTo(rightEye.x - 9 * scale, eyeY - browLift);
-    ctx.quadraticCurveTo(rightEye.x, eyeY - browLift - 5 * scale, rightEye.x + 10 * scale, eyeY - browLift);
+    ctx.moveTo(leftEye.x - 13 * scale, eyeY - browLift);
+    ctx.quadraticCurveTo(leftEye.x, eyeY - browLift - 6 * scale, leftEye.x + 12 * scale, eyeY - browLift);
+    ctx.moveTo(rightEye.x - 12 * scale, eyeY - browLift);
+    ctx.quadraticCurveTo(rightEye.x, eyeY - browLift - 6 * scale, rightEye.x + 13 * scale, eyeY - browLift);
     ctx.stroke();
 
-    // Nose
     ctx.strokeStyle = '#BC7A57';
-    ctx.lineWidth = 2.2 * scale;
+    ctx.lineWidth = 3 * scale;
     ctx.beginPath();
-    ctx.moveTo(nose.x, nose.y - 8 * scale);
-    ctx.lineTo(nose.x - 4 * scale, nose.y + 2 * scale);
-    ctx.lineTo(nose.x + 4 * scale, nose.y + 2 * scale);
+    ctx.moveTo(nose.x, nose.y - 10 * scale);
+    ctx.lineTo(nose.x - 5 * scale, nose.y + 3 * scale);
+    ctx.lineTo(nose.x + 5 * scale, nose.y + 3 * scale);
     ctx.stroke();
 
-    // Mouth
     if (mood === 'surprised') {
       ctx.fillStyle = '#9F1239';
       ctx.beginPath();
-      ctx.ellipse(mouth.x, mouth.y, 9 * scale, 11 * scale, 0, 0, Math.PI * 2);
+      ctx.ellipse(mouth.x, mouth.y, 12 * scale, 15 * scale, 0, 0, Math.PI * 2);
       ctx.fill();
     } else if (mood === 'focus') {
       ctx.strokeStyle = '#9F1239';
-      ctx.lineWidth = 3 * scale;
+      ctx.lineWidth = 4 * scale;
       ctx.beginPath();
-      ctx.moveTo(mouth.x - 12 * scale, mouth.y);
-      ctx.quadraticCurveTo(mouth.x, mouth.y + 3 * scale, mouth.x + 12 * scale, mouth.y - 1 * scale);
+      ctx.moveTo(mouth.x - 16 * scale, mouth.y);
+      ctx.quadraticCurveTo(mouth.x, mouth.y + 4 * scale, mouth.x + 16 * scale, mouth.y - 1 * scale);
       ctx.stroke();
     } else {
       ctx.strokeStyle = '#BE123C';
-      ctx.lineWidth = 3.2 * scale;
+      ctx.lineWidth = 4.2 * scale;
       ctx.beginPath();
-      ctx.arc(mouth.x, mouth.y - 6 * scale, 14 * scale, 0.15 * Math.PI, 0.85 * Math.PI);
+      ctx.arc(mouth.x, mouth.y - 8 * scale, 19 * scale, 0.15 * Math.PI, 0.85 * Math.PI);
       ctx.stroke();
     }
 
     return {
-      x: Math.round(cx - rx - 8 * scale),
-      y: Math.round(cy - ry - 10 * scale),
-      w: Math.round((rx + 8 * scale) * 2),
-      h: Math.round((ry + 10 * scale) * 2),
+      x: Math.round(cx - rx - 10 * scale),
+      y: Math.round(cy - ry - 12 * scale),
+      w: Math.round((rx + 10 * scale) * 2),
+      h: Math.round((ry + 12 * scale) * 2),
       confidence,
       expression:
         mood === 'smile' ? 'Senang' : mood === 'surprised' ? 'Terkejut' : 'Fokus',
@@ -460,6 +456,15 @@ function drawFaceSampleScene(
       rightEye,
       nose,
       mouth,
+      forehead,
+      eyeAngle: 0,
+      blendshapes:
+        mood === 'smile'
+          ? { smile: 86, surprise: 8, blink: 4, focus: 12 }
+          : mood === 'surprised'
+            ? { smile: 10, surprise: 89, blink: 2, focus: 18 }
+            : { smile: 14, surprise: 6, blink: 5, focus: 78 },
+      engine: 'sample',
     };
   };
 
@@ -469,213 +474,208 @@ function drawFaceSampleScene(
   if (sample === 'surprised') {
     return [drawSinglePerson(w * 0.5, h * 0.48, 1.05, '#7C3AED', '#451A03', 'surprised', 96.4)];
   }
-  // Group (2 faces)
   return [
     drawSinglePerson(w * 0.31, h * 0.5, 0.82, '#0EA5E9', '#1E293B', 'smile', 97.9),
     drawSinglePerson(w * 0.7, h * 0.48, 0.82, '#EC4899', '#3F2718', 'focus', 95.2),
   ];
 }
 
-// Real YCbCr skin-region face blob estimator for uploaded images & live webcam frames
-function detectFacesFromPixels(imageData: ImageData): DetectedFace[] {
-  const { data, width, height } = imageData;
-  const step = 4;
-  let minX = width;
-  let minY = height;
-  let maxX = 0;
-  let maxY = 0;
-  let skinCount = 0;
-
-  for (let y = Math.floor(height * 0.08); y < Math.floor(height * 0.88); y += step) {
-    for (let x = Math.floor(width * 0.08); x < Math.floor(width * 0.92); x += step) {
-      const i = (y * width + x) * 4;
-      const r = data[i];
-      const g = data[i + 1];
-      const b = data[i + 2];
-      const cb = 128 - 0.168736 * r - 0.331264 * g + 0.5 * b;
-      const cr = 128 + 0.5 * r - 0.418688 * g - 0.081312 * b;
-      if (cb >= 77 && cb <= 127 && cr >= 133 && cr <= 173 && r > 70 && r > g && r > b) {
-        skinCount++;
-        if (x < minX) minX = x;
-        if (x > maxX) maxX = x;
-        if (y < minY) minY = y;
-        if (y > maxY) maxY = y;
-      }
-    }
-  }
-
-  // Fallback centered portrait box if lighting/image has low skin match
-  if (skinCount < 40 || maxX - minX < 32 || maxY - minY < 32) {
-    const bw = Math.round(width * 0.36);
-    const bh = Math.round(height * 0.48);
-    const bx = Math.round((width - bw) / 2);
-    const by = Math.round((height - bh) / 2 - 8);
-    return [
-      {
-        x: bx,
-        y: by,
-        w: bw,
-        h: bh,
-        confidence: 88.5,
-        expression: 'Terdeteksi',
-        leftEye: { x: bx + bw * 0.34, y: by + bh * 0.38 },
-        rightEye: { x: bx + bw * 0.66, y: by + bh * 0.38 },
-        nose: { x: bx + bw * 0.5, y: by + bh * 0.56 },
-        mouth: { x: bx + bw * 0.5, y: by + bh * 0.74 },
-      },
-    ];
-  }
-
-  const padX = Math.round((maxX - minX) * 0.1);
-  const padY = Math.round((maxY - minY) * 0.12);
-  const bx = Math.max(4, minX - padX);
-  const by = Math.max(4, minY - padY);
-  const bw = Math.min(width - bx - 4, maxX - minX + padX * 2);
-  const bh = Math.min(height - by - 4, Math.min(maxY - minY + padY * 2, bw * 1.35));
-
-  return [
-    {
-      x: bx,
-      y: by,
-      w: bw,
-      h: bh,
-      confidence: Math.min(99.1, Math.round((89 + Math.min(skinCount, 400) / 40) * 10) / 10),
-      expression: 'Wajah Aktif',
-      leftEye: { x: bx + bw * 0.33, y: by + bh * 0.37 },
-      rightEye: { x: bx + bw * 0.67, y: by + bh * 0.37 },
-      nose: { x: bx + bw * 0.5, y: by + bh * 0.56 },
-      mouth: { x: bx + bw * 0.5, y: by + bh * 0.75 },
-    },
-  ];
-}
-
-// Real pixel-level Cartoonizer (Color Quantization + Sobel Edge Outline)
-function applyCartoonFilterToCanvas(
-  srcCanvas: HTMLCanvasElement,
-  dstCanvas: HTMLCanvasElement,
+// Shared Face Detection & AR Overlay renderer (supports tilted real ML landmarks & 478-pt Face Mesh!)
+function drawFaceOverlays(
+  ctx: CanvasRenderingContext2D,
+  faces: DetectedFace[],
   opts: {
-    levels: number;
-    edgeThreshold: number;
-    style: 'komik' | 'anime' | 'sketsa';
-    viewMode: 'cartoon' | 'split' | 'original';
+    showBox: boolean;
+    showLandmarks: boolean;
+    showMood: boolean;
+    arFilter: 'none' | 'glasses' | 'crown';
   }
-): number {
-  const t0 = performance.now();
-  const w = srcCanvas.width;
-  const h = srcCanvas.height;
-  dstCanvas.width = w;
-  dstCanvas.height = h;
+) {
+  faces.forEach((face, idx) => {
+    if (opts.showBox) {
+      ctx.strokeStyle = '#4ADE80';
+      ctx.lineWidth = 2.5;
+      ctx.strokeRect(face.x, face.y, face.w, face.h);
 
-  const sCtx = srcCanvas.getContext('2d', { willReadFrequently: true });
-  const dCtx = dstCanvas.getContext('2d');
-  if (!sCtx || !dCtx) return 0;
-
-  const srcData = sCtx.getImageData(0, 0, w, h);
-  const src = srcData.data;
-
-  if (opts.viewMode === 'original') {
-    dCtx.putImageData(srcData, 0, 0);
-    return Math.round((performance.now() - t0) * 10) / 10;
-  }
-
-  // Grayscale buffer for Sobel edge detection
-  const gray = new Float32Array(w * h);
-  for (let i = 0; i < w * h; i++) {
-    const idx = i * 4;
-    gray[i] = 0.299 * src[idx] + 0.587 * src[idx + 1] + 0.114 * src[idx + 2];
-  }
-
-  const outData = dCtx.createImageData(w, h);
-  const out = outData.data;
-  const step = 255 / Math.max(2, opts.levels - 1);
-  const splitX = Math.floor(w / 2);
-
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      const p = y * w + x;
-      const idx = p * 4;
-
-      if (opts.viewMode === 'split' && x < splitX) {
-        out[idx] = src[idx];
-        out[idx + 1] = src[idx + 1];
-        out[idx + 2] = src[idx + 2];
-        out[idx + 3] = 255;
-        continue;
-      }
-
-      // Compute Sobel gradient magnitude
-      let mag = 0;
-      if (x > 0 && x < w - 1 && y > 0 && y < h - 1) {
-        const tl = gray[(y - 1) * w + (x - 1)];
-        const tc = gray[(y - 1) * w + x];
-        const tr = gray[(y - 1) * w + (x + 1)];
-        const ml = gray[y * w + (x - 1)];
-        const mr = gray[y * w + (x + 1)];
-        const bl = gray[(y + 1) * w + (x - 1)];
-        const bc = gray[(y + 1) * w + x];
-        const br = gray[(y + 1) * w + (x + 1)];
-
-        const gx = -tl + tr - 2 * ml + 2 * mr - bl + br;
-        const gy = -tl - 2 * tc - tr + bl + 2 * bc + br;
-        mag = Math.sqrt(gx * gx + gy * gy);
-      }
-
-      const isEdge = mag > opts.edgeThreshold;
-
-      if (opts.style === 'sketsa') {
-        const shade = isEdge ? 20 : gray[p] > 165 ? 252 : gray[p] > 105 ? 215 : 150;
-        out[idx] = shade;
-        out[idx + 1] = shade;
-        out[idx + 2] = Math.min(255, shade + 6);
-        out[idx + 3] = 255;
-        continue;
-      }
-
-      if (isEdge) {
-        out[idx] = 18;
-        out[idx + 1] = 20;
-        out[idx + 2] = 28;
-        out[idx + 3] = 255;
-        continue;
-      }
-
-      let r = Math.round(src[idx] / step) * step;
-      let g = Math.round(src[idx + 1] / step) * step;
-      let b = Math.round(src[idx + 2] / step) * step;
-
-      if (opts.style === 'anime') {
-        // Boost saturation & warm brightness
-        const avg = (r + g + b) / 3;
-        r = Math.min(255, Math.max(0, avg + (r - avg) * 1.45 + 14));
-        g = Math.min(255, Math.max(0, avg + (g - avg) * 1.38 + 10));
-        b = Math.min(255, Math.max(0, avg + (b - avg) * 1.42 + 12));
-      } else {
-        // Komik Pop punchy boost
-        const avg = (r + g + b) / 3;
-        r = Math.min(255, Math.max(0, avg + (r - avg) * 1.25));
-        g = Math.min(255, Math.max(0, avg + (g - avg) * 1.25));
-        b = Math.min(255, Math.max(0, avg + (b - avg) * 1.25));
-      }
-
-      out[idx] = r;
-      out[idx + 1] = g;
-      out[idx + 2] = b;
-      out[idx + 3] = 255;
+      const cl = Math.min(18, Math.max(10, Math.round(face.w * 0.14)));
+      ctx.strokeStyle = '#FFE600';
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      // Top-left
+      ctx.moveTo(face.x, face.y + cl);
+      ctx.lineTo(face.x, face.y);
+      ctx.lineTo(face.x + cl, face.y);
+      // Top-right
+      ctx.moveTo(face.x + face.w - cl, face.y);
+      ctx.lineTo(face.x + face.w, face.y);
+      ctx.lineTo(face.x + face.w, face.y + cl);
+      // Bottom-left
+      ctx.moveTo(face.x, face.y + face.h - cl);
+      ctx.lineTo(face.x, face.y + face.h);
+      ctx.lineTo(face.x + cl, face.y + face.h);
+      // Bottom-right
+      ctx.moveTo(face.x + face.w - cl, face.y + face.h);
+      ctx.lineTo(face.x + face.w, face.y + face.h);
+      ctx.lineTo(face.x + face.w, face.y + face.h - cl);
+      ctx.stroke();
     }
-  }
 
-  dCtx.putImageData(outData, 0, 0);
+    if (opts.showLandmarks) {
+      // Draw real MediaPipe Face Mesh contours when available
+      if (face.meshContours && face.meshContours.length > 0) {
+        ctx.save();
+        ctx.strokeStyle = 'rgba(56, 189, 248, 0.72)';
+        ctx.lineWidth = 1.5;
+        face.meshContours.forEach((contour, cIdx) => {
+          if (contour.length < 2) return;
+          ctx.strokeStyle =
+            cIdx === 0
+              ? 'rgba(74, 222, 128, 0.78)'
+              : cIdx === 1
+                ? 'rgba(251, 113, 133, 0.85)'
+                : 'rgba(56, 189, 248, 0.85)';
+          ctx.beginPath();
+          ctx.moveTo(contour[0].x, contour[0].y);
+          for (let i = 1; i < contour.length; i++) {
+            ctx.lineTo(contour[i].x, contour[i].y);
+          }
+          ctx.stroke();
+        });
+        ctx.restore();
+      } else {
+        // Sample / fallback clean triangulation lines
+        ctx.strokeStyle = 'rgba(56, 189, 248, 0.75)';
+        ctx.lineWidth = 1.6;
+        ctx.beginPath();
+        ctx.moveTo(face.leftEye.x, face.leftEye.y);
+        ctx.lineTo(face.rightEye.x, face.rightEye.y);
+        ctx.lineTo(face.nose.x, face.nose.y);
+        ctx.lineTo(face.leftEye.x, face.leftEye.y);
+        ctx.moveTo(face.nose.x, face.nose.y);
+        ctx.lineTo(face.mouth.x, face.mouth.y);
+        ctx.stroke();
+      }
 
-  if (opts.viewMode === 'split') {
-    dCtx.strokeStyle = '#FFE600';
-    dCtx.lineWidth = 3;
-    dCtx.beginPath();
-    dCtx.moveTo(splitX, 0);
-    dCtx.lineTo(splitX, h);
-    dCtx.stroke();
-  }
+      const pts = [
+        { pt: face.leftEye, color: '#38BDF8' },
+        { pt: face.rightEye, color: '#38BDF8' },
+        { pt: face.nose, color: '#FFE600' },
+        { pt: face.mouth, color: '#FB7185' },
+      ];
+      pts.forEach(({ pt, color }) => {
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.arc(pt.x, pt.y, 4.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = '#000000';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+      });
+    }
 
-  return Math.round((performance.now() - t0) * 10) / 10;
+    // Tilting AR Filters anchored to real ML landmarks
+    const angle = face.eyeAngle ?? 0;
+    const eyeDx = face.rightEye.x - face.leftEye.x;
+    const eyeDy = face.rightEye.y - face.leftEye.y;
+    const eyeDist = Math.hypot(eyeDx, eyeDy);
+
+    if (opts.arFilter === 'glasses' && eyeDist > 8) {
+      const midX = (face.leftEye.x + face.rightEye.x) / 2;
+      const midY = (face.leftEye.y + face.rightEye.y) / 2;
+      const lensW = Math.max(24, eyeDist * 0.72);
+      const lensH = Math.max(15, lensW * 0.52);
+      const halfSpan = eyeDist / 2;
+
+      ctx.save();
+      ctx.translate(midX, midY);
+      ctx.rotate(angle);
+
+      // Cyber frames + subtle cyan neon highlight
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.88)';
+      ctx.strokeStyle = '#38BDF8';
+      ctx.lineWidth = 3;
+      ctx.fillRect(-halfSpan - lensW / 2, -lensH / 2, lensW, lensH);
+      ctx.strokeRect(-halfSpan - lensW / 2, -lensH / 2, lensW, lensH);
+      ctx.fillRect(halfSpan - lensW / 2, -lensH / 2, lensW, lensH);
+      ctx.strokeRect(halfSpan - lensW / 2, -lensH / 2, lensW, lensH);
+
+      // Glint lines
+      ctx.strokeStyle = 'rgba(255, 230, 0, 0.85)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(-halfSpan - lensW * 0.3, -lensH * 0.25);
+      ctx.lineTo(-halfSpan - lensW * 0.05, -lensH * 0.25);
+      ctx.moveTo(halfSpan - lensW * 0.3, -lensH * 0.25);
+      ctx.lineTo(halfSpan - lensW * 0.05, -lensH * 0.25);
+      ctx.stroke();
+
+      // Bridge & temples
+      ctx.strokeStyle = '#38BDF8';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(-halfSpan + lensW / 2, 0);
+      ctx.lineTo(halfSpan - lensW / 2, 0);
+      ctx.moveTo(-halfSpan - lensW / 2, -2);
+      ctx.lineTo(-halfSpan - lensW * 0.75, -4);
+      ctx.moveTo(halfSpan + lensW / 2, -2);
+      ctx.lineTo(halfSpan + lensW * 0.75, -4);
+      ctx.stroke();
+
+      ctx.restore();
+    } else if (opts.arFilter === 'crown') {
+      const cw = Math.max(54, face.w * 0.62);
+      const ch = Math.max(28, cw * 0.36);
+      const anchorX = face.forehead ? face.forehead.x : face.x + face.w / 2;
+      const anchorY = face.forehead ? face.forehead.y - 6 : Math.max(30, face.y + 8);
+
+      ctx.save();
+      ctx.translate(anchorX, anchorY);
+      ctx.rotate(angle);
+
+      ctx.fillStyle = '#FFE600';
+      ctx.strokeStyle = '#000000';
+      ctx.lineWidth = 2.8;
+      ctx.beginPath();
+      ctx.moveTo(-cw / 2, 0);
+      ctx.lineTo(-cw / 2 + 5, -ch);
+      ctx.lineTo(-cw * 0.18, -ch * 0.42);
+      ctx.lineTo(0, -ch * 1.18);
+      ctx.lineTo(cw * 0.18, -ch * 0.42);
+      ctx.lineTo(cw / 2 - 5, -ch);
+      ctx.lineTo(cw / 2, 0);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+
+      // Crown jewels
+      ctx.fillStyle = '#FB7185';
+      ctx.beginPath();
+      ctx.arc(0, -ch * 0.32, 4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#38BDF8';
+      ctx.beginPath();
+      ctx.arc(-cw * 0.24, -ch * 0.24, 3.2, 0, Math.PI * 2);
+      ctx.arc(cw * 0.24, -ch * 0.24, 3.2, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.restore();
+    }
+
+    if (opts.showMood) {
+      const label = `Wajah #${idx + 1} · ${face.expression} (${face.confidence}%)`;
+      ctx.font = 'bold 12px monospace';
+      const tw = ctx.measureText(label).width + 14;
+      const tx = Math.max(4, Math.min(CANVAS_W - tw - 4, face.x));
+      const ty = Math.max(24, face.y - 6);
+      ctx.fillStyle = '#0F172A';
+      ctx.fillRect(tx, ty - 18, tw, 20);
+      ctx.strokeStyle = '#4ADE80';
+      ctx.lineWidth = 1.8;
+      ctx.strokeRect(tx, ty - 18, tw, 20);
+      ctx.fillStyle = '#4ADE80';
+      ctx.fillText(label, tx + 7, ty - 4);
+    }
+  });
 }
 
 // ===================== 1. CARTOONIZER AI LIVE LAB =====================
@@ -687,12 +687,18 @@ const CartoonizerLiveLab: React.FC<{
   const [sample, setSample] = useState<CartoonSampleId>('student');
   const [style, setStyle] = useState<'komik' | 'anime' | 'sketsa'>('komik');
   const [levels, setLevels] = useState(5);
-  const [edgeThreshold, setEdgeThreshold] = useState(56);
+  const [edgeThreshold, setEdgeThreshold] = useState(58);
+  const [smoothNoise, setSmoothNoise] = useState(true);
   const [viewMode, setViewMode] = useState<'cartoon' | 'split' | 'original'>('cartoon');
   const [sourceKind, setSourceKind] = useState<'sample' | 'upload' | 'camera'>('sample');
+  const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user');
+  const [mirrorCamera, setMirrorCamera] = useState(true);
+  const [cameraFrozen, setCameraFrozen] = useState(false);
+  const [cameraStarting, setCameraStarting] = useState(false);
+  const [cameraLabel, setCameraLabel] = useState('');
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [inferenceMs, setInferenceMs] = useState(0);
-  const [testedCount, setTestedCount] = useState(0);
+  const [liveFps, setLiveFps] = useState(0);
   const [missionCleared, setMissionCleared] = useState(false);
 
   const srcCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -701,68 +707,140 @@ const CartoonizerLiveLab: React.FC<{
   const streamRef = useRef<MediaStream | null>(null);
   const uploadedImgRef = useRef<HTMLImageElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const processorRef = useRef<FastCartoonizerProcessor>(new FastCartoonizerProcessor());
+  const rafRef = useRef<number | null>(null);
+  const lastVideoTimeRef = useRef<number>(-1);
+
+  // Keep latest filter options in ref so rAF loop runs smoothly at 60 FPS without tearing down
+  const optsRef = useRef({ levels, edgeThreshold, style, viewMode, smoothNoise, mirrorCamera, cameraFrozen });
+  useEffect(() => {
+    optsRef.current = { levels, edgeThreshold, style, viewMode, smoothNoise, mirrorCamera, cameraFrozen };
+  }, [levels, edgeThreshold, style, viewMode, smoothNoise, mirrorCamera, cameraFrozen]);
 
   const stopCamera = useCallback(() => {
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((t) => t.stop());
-      streamRef.current = null;
+    if (rafRef.current !== null) {
+      window.cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
     }
+    stopMediaStream(streamRef.current);
+    streamRef.current = null;
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+    setCameraLabel('');
+    setCameraFrozen(false);
+    setLiveFps(0);
+    lastVideoTimeRef.current = -1;
   }, []);
 
   useEffect(() => () => stopCamera(), [stopCamera]);
 
-  const runCartoonPipeline = useCallback(() => {
+  const renderStaticSource = useCallback(() => {
+    if (sourceKind === 'camera') return;
     const srcCanvas = srcCanvasRef.current;
     const dstCanvas = dstCanvasRef.current;
     if (!srcCanvas || !dstCanvas) return;
 
-    const w = 360;
-    const h = 250;
-    srcCanvas.width = w;
-    srcCanvas.height = h;
+    srcCanvas.width = CANVAS_W;
+    srcCanvas.height = CANVAS_H;
     const sCtx = srcCanvas.getContext('2d', { willReadFrequently: true });
     if (!sCtx) return;
 
-    if (sourceKind === 'sample') {
-      drawCartoonSampleScene(sCtx, sample, w, h);
-    } else if (sourceKind === 'upload' && uploadedImgRef.current) {
+    if (sourceKind === 'upload' && uploadedImgRef.current) {
       sCtx.fillStyle = '#0F172A';
-      sCtx.fillRect(0, 0, w, h);
-      const img = uploadedImgRef.current;
-      const scale = Math.max(w / img.width, h / img.height);
-      const dw = img.width * scale;
-      const dh = img.height * scale;
-      sCtx.drawImage(img, (w - dw) / 2, (h - dh) / 2, dw, dh);
-    } else if (sourceKind === 'camera' && videoRef.current && videoRef.current.readyState >= 2) {
-      sCtx.drawImage(videoRef.current, 0, 0, w, h);
+      sCtx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+      drawSourceCover(sCtx, uploadedImgRef.current, CANVAS_W, CANVAS_H, false);
     } else {
-      drawCartoonSampleScene(sCtx, sample, w, h);
+      drawCartoonSampleScene(sCtx, sample, CANVAS_W, CANVAS_H);
     }
 
-    const ms = applyCartoonFilterToCanvas(srcCanvas, dstCanvas, {
+    const ms = processorRef.current.process(srcCanvas, dstCanvas, {
       levels,
       edgeThreshold,
       style,
       viewMode,
+      smoothNoise,
     });
     setInferenceMs(ms);
-  }, [sample, style, levels, edgeThreshold, viewMode, sourceKind]);
+  }, [sample, style, levels, edgeThreshold, viewMode, smoothNoise, sourceKind]);
 
   useEffect(() => {
-    runCartoonPipeline();
-  }, [runCartoonPipeline]);
+    renderStaticSource();
+  }, [renderStaticSource]);
 
+  // Smooth requestAnimationFrame live camera loop
   useEffect(() => {
     if (sourceKind !== 'camera') return;
-    const timer = window.setInterval(() => {
-      runCartoonPipeline();
-    }, 140);
-    return () => window.clearInterval(timer);
-  }, [sourceKind, runCartoonPipeline]);
+    let active = true;
+    let frameCounter = 0;
+    let fpsStart = performance.now();
+    let lastUiUpdate = 0;
+    let lastFrozenSig = '';
 
-  const registerTestAction = () => {
-    const next = testedCount + 1;
-    setTestedCount(next);
+    const tick = (now: number) => {
+      if (!active) return;
+      const video = videoRef.current;
+      const srcCanvas = srcCanvasRef.current;
+      const dstCanvas = dstCanvasRef.current;
+      const currentOpts = optsRef.current;
+
+      if (video && srcCanvas && dstCanvas && video.readyState >= 2 && video.videoWidth > 0) {
+        if (srcCanvas.width !== CANVAS_W) srcCanvas.width = CANVAS_W;
+        if (srcCanvas.height !== CANVAS_H) srcCanvas.height = CANVAS_H;
+
+        const hasNewFrame = !currentOpts.cameraFrozen && video.currentTime !== lastVideoTimeRef.current;
+        const frozenSig = `${currentOpts.levels}|${currentOpts.edgeThreshold}|${currentOpts.style}|${currentOpts.viewMode}|${currentOpts.smoothNoise}`;
+        const frozenChanged = currentOpts.cameraFrozen && frozenSig !== lastFrozenSig;
+
+        if (hasNewFrame) {
+          lastVideoTimeRef.current = video.currentTime;
+          lastFrozenSig = '';
+          const sCtx = srcCanvas.getContext('2d', { willReadFrequently: true });
+          if (sCtx) {
+            drawSourceCover(sCtx, video, CANVAS_W, CANVAS_H, currentOpts.mirrorCamera);
+          }
+        }
+
+        if (hasNewFrame || frozenChanged) {
+          if (frozenChanged) lastFrozenSig = frozenSig;
+          const ms = processorRef.current.process(srcCanvas, dstCanvas, {
+            levels: currentOpts.levels,
+            edgeThreshold: currentOpts.edgeThreshold,
+            style: currentOpts.style,
+            viewMode: currentOpts.viewMode,
+            smoothNoise: currentOpts.smoothNoise,
+          });
+
+          if (hasNewFrame) {
+            frameCounter++;
+          }
+          if (frozenChanged || now - lastUiUpdate >= 300) {
+            lastUiUpdate = now;
+            setInferenceMs(ms);
+            const elapsed = (now - fpsStart) / 1000;
+            if (elapsed >= 0.4) {
+              setLiveFps(currentOpts.cameraFrozen ? 0 : Math.round(frameCounter / elapsed));
+              frameCounter = 0;
+              fpsStart = now;
+            }
+          }
+        }
+      }
+
+      rafRef.current = window.requestAnimationFrame(tick);
+    };
+
+    rafRef.current = window.requestAnimationFrame(tick);
+    return () => {
+      active = false;
+      if (rafRef.current !== null) {
+        window.cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
+    };
+  }, [sourceKind]);
+
+  const registerTestAction = useCallback(() => {
     if (ready && !missionCleared) {
       setMissionCleared(true);
       soundEngine.playVictory();
@@ -770,7 +848,7 @@ const CartoonizerLiveLab: React.FC<{
     } else {
       soundEngine.playGemCollect();
     }
-  };
+  }, [ready, missionCleared, onMissionSuccess]);
 
   const handleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -790,31 +868,47 @@ const CartoonizerLiveLab: React.FC<{
     reader.readAsDataURL(file);
   };
 
+  const openCamera = async (nextFacing: 'user' | 'environment') => {
+    setCameraError(null);
+    setCameraStarting(true);
+    stopCamera();
+    try {
+      if (!videoRef.current) {
+        throw new Error('Elemen video belum siap.');
+      }
+      const res = await startRealCameraStream(videoRef.current, nextFacing);
+      streamRef.current = res.stream;
+      setFacingMode(nextFacing);
+      setMirrorCamera(nextFacing === 'user');
+      setCameraLabel(`${res.label} (${res.width}×${res.height})`);
+      setCameraFrozen(false);
+      setSourceKind('camera');
+      registerTestAction();
+    } catch (err) {
+      setCameraError(
+        err instanceof Error
+          ? err.message
+          : 'Izin kamera tidak tersedia. Gunakan Sampel Potret atau Unggah Foto!'
+      );
+      soundEngine.playCrash();
+    } finally {
+      setCameraStarting(false);
+    }
+  };
+
   const handleToggleCamera = async () => {
     if (sourceKind === 'camera') {
       stopCamera();
       setSourceKind('sample');
+      soundEngine.playButtonClick();
       return;
     }
-    setCameraError(null);
-    try {
-      if (!navigator.mediaDevices?.getUserMedia) {
-        throw new Error('Kamera tidak tersedia pada peramban ini.');
-      }
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { width: 360, height: 250, facingMode: 'user' },
-      });
-      streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
-      }
-      setSourceKind('camera');
-      registerTestAction();
-    } catch {
-      setCameraError('Izin kamera tidak tersedia. Gunakan Sampel Potret atau Unggah Foto!');
-      soundEngine.playCrash();
-    }
+    await openCamera(facingMode);
+  };
+
+  const handleSwitchCamera = async () => {
+    const nextFacing = facingMode === 'user' ? 'environment' : 'user';
+    await openCamera(nextFacing);
   };
 
   const handleDownload = () => {
@@ -830,7 +924,14 @@ const CartoonizerLiveLab: React.FC<{
   return (
     <div className="space-y-3">
       <canvas ref={srcCanvasRef} className="hidden" />
-      <video ref={videoRef} className="hidden" playsInline muted />
+      {/* Keep real video off-screen (NOT display:none) so browsers decode frames at full 30-60 FPS */}
+      <video
+        ref={videoRef}
+        className="fixed -left-[9999px] top-0 w-1 h-1 opacity-0 pointer-events-none"
+        playsInline
+        autoPlay
+        muted
+      />
       <input
         ref={fileInputRef}
         type="file"
@@ -876,12 +977,18 @@ const CartoonizerLiveLab: React.FC<{
           </button>
           <button
             type="button"
+            disabled={cameraStarting}
             onClick={() => void handleToggleCamera()}
             className={`neo-btn px-2.5 py-1 text-[11px] font-extrabold inline-flex items-center gap-1 cursor-pointer ${
               sourceKind === 'camera' ? 'bg-[#FB7185]' : 'bg-[#38BDF8]'
             }`}
           >
-            {sourceKind === 'camera' ? (
+            {cameraStarting ? (
+              <>
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                Membuka...
+              </>
+            ) : sourceKind === 'camera' ? (
               <>
                 <CameraOff className="w-3.5 h-3.5" />
                 Stop Kamera
@@ -889,15 +996,61 @@ const CartoonizerLiveLab: React.FC<{
             ) : (
               <>
                 <Camera className="w-3.5 h-3.5" />
-                Kamera
+                Kamera Live
               </>
             )}
           </button>
         </div>
       </div>
 
+      {/* Live Camera Controls Strip */}
+      {sourceKind === 'camera' && (
+        <div className="flex flex-wrap items-center justify-between gap-2 px-2.5 py-2 bg-[#E0F2FE] border-2 border-black text-[11px]">
+          <div className="flex items-center gap-1.5 font-extrabold truncate max-w-[210px]">
+            <span className="w-2.5 h-2.5 rounded-full bg-red-600 animate-pulse shrink-0" />
+            <span className="truncate">{cameraLabel || 'Kamera Aktif'}</span>
+          </div>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => {
+                setMirrorCamera((m) => !m);
+                soundEngine.playButtonClick();
+              }}
+              className={`px-2 py-0.5 border border-black font-extrabold inline-flex items-center gap-1 cursor-pointer ${
+                mirrorCamera ? 'bg-[#FFE600]' : 'bg-white'
+              }`}
+            >
+              <FlipHorizontal2 className="w-3 h-3" />
+              Mirror
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleSwitchCamera()}
+              className="px-2 py-0.5 border border-black bg-white font-extrabold inline-flex items-center gap-1 cursor-pointer hover:bg-[#FFE600]"
+            >
+              <SwitchCamera className="w-3 h-3" />
+              Ganti
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setCameraFrozen((f) => !f);
+                soundEngine.playButtonClick();
+              }}
+              className={`px-2 py-0.5 border border-black font-extrabold inline-flex items-center gap-1 cursor-pointer ${
+                cameraFrozen ? 'bg-[#4ADE80]' : 'bg-white'
+              }`}
+            >
+              {cameraFrozen ? <Play className="w-3 h-3" /> : <Pause className="w-3 h-3" />}
+              {cameraFrozen ? 'Lanjut' : 'Bekukan'}
+            </button>
+          </div>
+        </div>
+      )}
+
       {cameraError && (
-        <div className="p-2 bg-[#FB7185]/25 border-2 border-black text-[11px] font-bold">
+        <div className="p-2.5 bg-[#FB7185]/25 border-2 border-black text-[11px] font-bold leading-relaxed">
           {cameraError}
         </div>
       )}
@@ -911,13 +1064,15 @@ const CartoonizerLiveLab: React.FC<{
             : viewMode === 'split'
               ? 'ASLI ◀ | ▶ KARTUN AI'
               : 'CITRA ASLI'}
+          {sourceKind === 'camera' && (cameraFrozen ? ' · JEDA' : ' · LIVE')}
         </div>
         <div className="absolute top-2 right-2 px-2 py-0.5 bg-black/80 text-[#4ADE80] font-mono text-[10px] font-bold border border-white/25">
+          {sourceKind === 'camera' && !cameraFrozen ? `${liveFps} FPS · ` : ''}
           {inferenceMs} ms
         </div>
       </div>
 
-      {/* Style Presets + View Mode */}
+      {/* Style Presets */}
       <div className="grid grid-cols-3 gap-2">
         {[
           { id: 'komik' as const, label: 'Komik Pop', color: '#FDBA74' },
@@ -981,7 +1136,7 @@ const CartoonizerLiveLab: React.FC<{
 
       {/* View Mode & Export Row */}
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex gap-1.5">
+        <div className="flex flex-wrap gap-1.5">
           {[
             { id: 'cartoon' as const, label: 'Hasil Kartun' },
             { id: 'split' as const, label: 'Split 50/50' },
@@ -1001,6 +1156,18 @@ const CartoonizerLiveLab: React.FC<{
               {vm.label}
             </button>
           ))}
+          <button
+            type="button"
+            onClick={() => {
+              setSmoothNoise((v) => !v);
+              soundEngine.playButtonClick();
+            }}
+            className={`px-2.5 py-1.5 border-2 border-black text-[11px] font-extrabold cursor-pointer ${
+              smoothNoise ? 'bg-[#BAE6FD]' : 'bg-white'
+            }`}
+          >
+            Haluskan: {smoothNoise ? 'ON' : 'OFF'}
+          </button>
         </div>
 
         <button
@@ -1015,14 +1182,14 @@ const CartoonizerLiveLab: React.FC<{
 
       {!ready && (
         <div className="p-2.5 bg-[#FFE600]/45 border-2 border-black text-xs font-bold">
-          Susun semua 4 blok pipeline di kiri lalu klik salah satu gaya kartun di atas untuk menyelesaikan proyek!
+          Susun semua 4 blok pipeline di kiri lalu uji Kamera Live / salah satu gaya kartun di atas untuk menyelesaikan proyek!
         </div>
       )}
     </div>
   );
 };
 
-// ===================== 2. FACE DETECTION AI LIVE LAB =====================
+// ===================== 2. FACE DETECTION AI LIVE LAB (REAL MEDIAPIPE ML) =====================
 
 const FaceDetectionLiveLab: React.FC<{
   ready: boolean;
@@ -1035,183 +1202,198 @@ const FaceDetectionLiveLab: React.FC<{
   const [showMood, setShowMood] = useState(true);
   const [arFilter, setArFilter] = useState<'none' | 'glasses' | 'crown'>('none');
   const [detectedFaces, setDetectedFaces] = useState<DetectedFace[]>([]);
+  const [mlStatus, setMlStatus] = useState<MlEngineStatus>(mlFaceEngine.getStatus());
+  const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user');
+  const [mirrorCamera, setMirrorCamera] = useState(true);
+  const [cameraFrozen, setCameraFrozen] = useState(false);
+  const [cameraStarting, setCameraStarting] = useState(false);
+  const [cameraLabel, setCameraLabel] = useState('');
+  const [liveFps, setLiveFps] = useState(0);
+  const [inferenceMs, setInferenceMs] = useState(0);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [missionCleared, setMissionCleared] = useState(false);
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const frozenFrameCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const uploadedImgRef = useRef<HTMLImageElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const rafRef = useRef<number | null>(null);
+  const lastVideoTimeRef = useRef<number>(-1);
+  const lastFacesRef = useRef<DetectedFace[]>([]);
+
+  const overlayOptsRef = useRef({ showBox, showLandmarks, showMood, arFilter, mirrorCamera, cameraFrozen });
+  useEffect(() => {
+    overlayOptsRef.current = { showBox, showLandmarks, showMood, arFilter, mirrorCamera, cameraFrozen };
+  }, [showBox, showLandmarks, showMood, arFilter, mirrorCamera, cameraFrozen]);
+
+  // Preload MediaPipe FaceLandmarker ML model immediately so camera & photo inference starts instantaneously
+  const [imageMlReady, setImageMlReady] = useState(false);
+  useEffect(() => {
+    let mounted = true;
+    setMlStatus((prev) => (prev === 'idle' ? 'loading' : prev));
+    void mlFaceEngine.ensureLoaded().then((st) => {
+      if (mounted) setMlStatus(st);
+      void mlFaceEngine.ensureImageReady().then((ok) => {
+        if (mounted && ok) setImageMlReady(true);
+      });
+    });
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const stopCamera = useCallback(() => {
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((t) => t.stop());
-      streamRef.current = null;
+    if (rafRef.current !== null) {
+      window.cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
     }
+    stopMediaStream(streamRef.current);
+    streamRef.current = null;
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+    setCameraLabel('');
+    setCameraFrozen(false);
+    setLiveFps(0);
+    lastVideoTimeRef.current = -1;
   }, []);
 
   useEffect(() => () => stopCamera(), [stopCamera]);
 
-  const runFaceDetection = useCallback(() => {
+  // Render static sources (Sample scenes or Uploaded real photos with MediaPipe IMAGE inference)
+  const renderStaticFaceDetection = useCallback(() => {
+    if (sourceKind === 'camera') return;
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const w = 360;
-    const h = 250;
-    canvas.width = w;
-    canvas.height = h;
+    canvas.width = CANVAS_W;
+    canvas.height = CANVAS_H;
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
     if (!ctx) return;
 
+    const t0 = performance.now();
     let faces: DetectedFace[] = [];
 
-    if (sourceKind === 'sample') {
-      faces = drawFaceSampleScene(ctx, sample, w, h);
-    } else if (sourceKind === 'upload' && uploadedImgRef.current) {
+    if (sourceKind === 'upload' && uploadedImgRef.current) {
       ctx.fillStyle = '#0F172A';
-      ctx.fillRect(0, 0, w, h);
-      const img = uploadedImgRef.current;
-      const scale = Math.max(w / img.width, h / img.height);
-      const dw = img.width * scale;
-      const dh = img.height * scale;
-      ctx.drawImage(img, (w - dw) / 2, (h - dh) / 2, dw, dh);
-      faces = detectFacesFromPixels(ctx.getImageData(0, 0, w, h));
-    } else if (sourceKind === 'camera' && videoRef.current && videoRef.current.readyState >= 2) {
-      ctx.drawImage(videoRef.current, 0, 0, w, h);
-      faces = detectFacesFromPixels(ctx.getImageData(0, 0, w, h));
+      ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+      const transform = drawSourceCover(ctx, uploadedImgRef.current, CANVAS_W, CANVAS_H, false);
+      const mlFaces = mlFaceEngine.detectStaticImage(
+        uploadedImgRef.current,
+        CANVAS_W,
+        CANVAS_H,
+        transform
+      );
+      faces = mlFaces !== null ? mlFaces : detectFacesFallbackFromPixels(ctx.getImageData(0, 0, CANVAS_W, CANVAS_H));
     } else {
-      faces = drawFaceSampleScene(ctx, sample, w, h);
+      faces = drawFaceSampleScene(ctx, sample, CANVAS_W, CANVAS_H);
     }
 
+    const ms = Math.round((performance.now() - t0) * 10) / 10;
+    setInferenceMs(ms);
+    lastFacesRef.current = faces;
     setDetectedFaces(faces);
 
-    // Draw AI-ML Overlays
-    faces.forEach((face, idx) => {
-      if (showBox) {
-        ctx.strokeStyle = '#4ADE80';
-        ctx.lineWidth = 3;
-        ctx.strokeRect(face.x, face.y, face.w, face.h);
-
-        // Corner brackets
-        const cl = 12;
-        ctx.strokeStyle = '#FFE600';
-        ctx.lineWidth = 4;
-        // Top-left
-        ctx.beginPath();
-        ctx.moveTo(face.x, face.y + cl);
-        ctx.lineTo(face.x, face.y);
-        ctx.lineTo(face.x + cl, face.y);
-        // Top-right
-        ctx.moveTo(face.x + face.w - cl, face.y);
-        ctx.lineTo(face.x + face.w, face.y);
-        ctx.lineTo(face.x + face.w, face.y + cl);
-        // Bottom-left
-        ctx.moveTo(face.x, face.y + face.h - cl);
-        ctx.lineTo(face.x, face.y + face.h);
-        ctx.lineTo(face.x + cl, face.y + face.h);
-        // Bottom-right
-        ctx.moveTo(face.x + face.w - cl, face.y + face.h);
-        ctx.lineTo(face.x + face.w, face.y + face.h);
-        ctx.lineTo(face.x + face.w, face.y + face.h - cl);
-        ctx.stroke();
-      }
-
-      if (showMood) {
-        const label = `Wajah #${idx + 1} · ${face.expression} (${face.confidence}%)`;
-        ctx.font = 'bold 11px monospace';
-        const tw = ctx.measureText(label).width + 12;
-        const ty = Math.max(20, face.y - 6);
-        ctx.fillStyle = '#0F172A';
-        ctx.fillRect(face.x, ty - 16, tw, 18);
-        ctx.strokeStyle = '#4ADE80';
-        ctx.lineWidth = 1.5;
-        ctx.strokeRect(face.x, ty - 16, tw, 18);
-        ctx.fillStyle = '#4ADE80';
-        ctx.fillText(label, face.x + 6, ty - 4);
-      }
-
-      if (showLandmarks) {
-        const pts = [
-          { pt: face.leftEye, color: '#38BDF8' },
-          { pt: face.rightEye, color: '#38BDF8' },
-          { pt: face.nose, color: '#FFE600' },
-          { pt: face.mouth, color: '#FB7185' },
-        ];
-        // Mesh lines
-        ctx.strokeStyle = 'rgba(56, 189, 248, 0.75)';
-        ctx.lineWidth = 1.5;
-        ctx.beginPath();
-        ctx.moveTo(face.leftEye.x, face.leftEye.y);
-        ctx.lineTo(face.rightEye.x, face.rightEye.y);
-        ctx.lineTo(face.nose.x, face.nose.y);
-        ctx.lineTo(face.leftEye.x, face.leftEye.y);
-        ctx.moveTo(face.nose.x, face.nose.y);
-        ctx.lineTo(face.mouth.x, face.mouth.y);
-        ctx.stroke();
-
-        pts.forEach(({ pt, color }) => {
-          ctx.fillStyle = color;
-          ctx.beginPath();
-          ctx.arc(pt.x, pt.y, 4.5, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.strokeStyle = '#000000';
-          ctx.lineWidth = 1.5;
-          ctx.stroke();
-        });
-      }
-
-      // AR Filters anchored to detected landmarks
-      if (arFilter === 'glasses') {
-        const eyeDist = Math.abs(face.rightEye.x - face.leftEye.x);
-        const lensW = Math.max(20, eyeDist * 0.62);
-        const lensH = Math.max(12, lensW * 0.52);
-        ctx.fillStyle = 'rgba(15, 23, 42, 0.88)';
-        ctx.strokeStyle = '#38BDF8';
-        ctx.lineWidth = 2.5;
-        ctx.fillRect(face.leftEye.x - lensW / 2, face.leftEye.y - lensH / 2, lensW, lensH);
-        ctx.strokeRect(face.leftEye.x - lensW / 2, face.leftEye.y - lensH / 2, lensW, lensH);
-        ctx.fillRect(face.rightEye.x - lensW / 2, face.rightEye.y - lensH / 2, lensW, lensH);
-        ctx.strokeRect(face.rightEye.x - lensW / 2, face.rightEye.y - lensH / 2, lensW, lensH);
-        ctx.beginPath();
-        ctx.moveTo(face.leftEye.x + lensW / 2, face.leftEye.y);
-        ctx.lineTo(face.rightEye.x - lensW / 2, face.rightEye.y);
-        ctx.stroke();
-      } else if (arFilter === 'crown') {
-        const cw = face.w * 0.56;
-        const ch = 26;
-        const cx = face.x + face.w / 2;
-        const baseY = Math.max(28, face.y + 8);
-        ctx.fillStyle = '#FFE600';
-        ctx.strokeStyle = '#000000';
-        ctx.lineWidth = 2.5;
-        ctx.beginPath();
-        ctx.moveTo(cx - cw / 2, baseY);
-        ctx.lineTo(cx - cw / 2 + 4, baseY - ch);
-        ctx.lineTo(cx - cw * 0.18, baseY - ch * 0.42);
-        ctx.lineTo(cx, baseY - ch * 1.15);
-        ctx.lineTo(cx + cw * 0.18, baseY - ch * 0.42);
-        ctx.lineTo(cx + cw / 2 - 4, baseY - ch);
-        ctx.lineTo(cx + cw / 2, baseY);
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
-      }
-    });
+    drawFaceOverlays(ctx, faces, { showBox, showLandmarks, showMood, arFilter });
   }, [sample, sourceKind, showBox, showLandmarks, showMood, arFilter]);
 
   useEffect(() => {
-    runFaceDetection();
-  }, [runFaceDetection]);
+    renderStaticFaceDetection();
+  }, [renderStaticFaceDetection, mlStatus, imageMlReady]);
 
+  // Smooth real-time requestAnimationFrame MediaPipe ML loop on live camera
   useEffect(() => {
     if (sourceKind !== 'camera') return;
-    const timer = window.setInterval(() => {
-      runFaceDetection();
-    }, 140);
-    return () => window.clearInterval(timer);
-  }, [sourceKind, runFaceDetection]);
+    let active = true;
+    let frameCounter = 0;
+    let fpsStart = performance.now();
+    let lastUiSync = 0;
+    let lastFrozenOverlaySig = '';
 
-  const markMissionIfReady = () => {
+    const tick = (now: number) => {
+      if (!active) return;
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
+      const freezeBuf = frozenFrameCanvasRef.current;
+      const opts = overlayOptsRef.current;
+
+      if (video && canvas && video.readyState >= 2 && video.videoWidth > 0) {
+        if (canvas.width !== CANVAS_W) canvas.width = CANVAS_W;
+        if (canvas.height !== CANVAS_H) canvas.height = CANVAS_H;
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+
+        if (ctx) {
+          if (opts.cameraFrozen && freezeBuf && freezeBuf.width === CANVAS_W) {
+            const overlaySig = `${opts.showBox}|${opts.showLandmarks}|${opts.showMood}|${opts.arFilter}`;
+            if (overlaySig !== lastFrozenOverlaySig) {
+              lastFrozenOverlaySig = overlaySig;
+              ctx.drawImage(freezeBuf, 0, 0, CANVAS_W, CANVAS_H);
+              drawFaceOverlays(ctx, lastFacesRef.current, opts);
+            }
+          } else if (video.currentTime !== lastVideoTimeRef.current) {
+            lastVideoTimeRef.current = video.currentTime;
+            lastFrozenOverlaySig = '';
+            const t0 = performance.now();
+
+            const transform = drawSourceCover(ctx, video, CANVAS_W, CANVAS_H, opts.mirrorCamera);
+
+            // Cache clean frame in case user clicks Freeze
+            if (freezeBuf) {
+              if (freezeBuf.width !== CANVAS_W) freezeBuf.width = CANVAS_W;
+              if (freezeBuf.height !== CANVAS_H) freezeBuf.height = CANVAS_H;
+              const fCtx = freezeBuf.getContext('2d');
+              fCtx?.drawImage(canvas, 0, 0);
+            }
+
+            // Run real MediaPipe FaceLandmarker ML inference
+            const mlFaces = mlFaceEngine.detectVideoFrame(
+              video,
+              CANVAS_W,
+              CANVAS_H,
+              transform,
+              opts.mirrorCamera
+            );
+            const faces =
+              mlFaces !== null
+                ? mlFaces
+                : detectFacesFallbackFromPixels(ctx.getImageData(0, 0, CANVAS_W, CANVAS_H));
+
+            lastFacesRef.current = faces;
+            drawFaceOverlays(ctx, faces, opts);
+
+            const ms = Math.round((performance.now() - t0) * 10) / 10;
+            frameCounter++;
+
+            if (now - lastUiSync >= 180) {
+              lastUiSync = now;
+              setDetectedFaces(faces);
+              setInferenceMs(ms);
+              const elapsed = (now - fpsStart) / 1000;
+              if (elapsed >= 0.4) {
+                setLiveFps(Math.round(frameCounter / elapsed));
+                frameCounter = 0;
+                fpsStart = now;
+              }
+            }
+          }
+        }
+      }
+
+      rafRef.current = window.requestAnimationFrame(tick);
+    };
+
+    rafRef.current = window.requestAnimationFrame(tick);
+    return () => {
+      active = false;
+      if (rafRef.current !== null) {
+        window.cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
+    };
+  }, [sourceKind]);
+
+  const markMissionIfReady = useCallback(() => {
     if (ready && !missionCleared) {
       setMissionCleared(true);
       soundEngine.playVictory();
@@ -1219,7 +1401,7 @@ const FaceDetectionLiveLab: React.FC<{
     } else {
       soundEngine.playGemCollect();
     }
-  };
+  }, [ready, missionCleared, onMissionSuccess]);
 
   const handleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -1239,36 +1421,88 @@ const FaceDetectionLiveLab: React.FC<{
     reader.readAsDataURL(file);
   };
 
+  const openCamera = async (nextFacing: 'user' | 'environment') => {
+    setCameraError(null);
+    setCameraStarting(true);
+    stopCamera();
+    try {
+      // Ensure ML engine is loading/ready in parallel with camera startup
+      const statusPromise = mlFaceEngine.ensureLoaded().then((st) => {
+        setMlStatus(st);
+        return st;
+      });
+      if (!videoRef.current) {
+        throw new Error('Elemen video belum siap.');
+      }
+      const [res] = await Promise.all([
+        startRealCameraStream(videoRef.current, nextFacing),
+        statusPromise.catch(() => 'fallback' as MlEngineStatus),
+      ]);
+      streamRef.current = res.stream;
+      setFacingMode(nextFacing);
+      setMirrorCamera(nextFacing === 'user');
+      setCameraLabel(`${res.label} (${res.width}×${res.height})`);
+      setCameraFrozen(false);
+      setSourceKind('camera');
+      markMissionIfReady();
+    } catch (err) {
+      setCameraError(
+        err instanceof Error
+          ? err.message
+          : 'Izin kamera tidak tersedia. Gunakan Sampel Potret atau Unggah Foto!'
+      );
+      soundEngine.playCrash();
+    } finally {
+      setCameraStarting(false);
+    }
+  };
+
   const handleToggleCamera = async () => {
     if (sourceKind === 'camera') {
       stopCamera();
       setSourceKind('sample');
+      soundEngine.playButtonClick();
       return;
     }
-    setCameraError(null);
-    try {
-      if (!navigator.mediaDevices?.getUserMedia) {
-        throw new Error('Kamera tidak tersedia pada peramban ini.');
-      }
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { width: 360, height: 250, facingMode: 'user' },
-      });
-      streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
-      }
-      setSourceKind('camera');
-      markMissionIfReady();
-    } catch {
-      setCameraError('Izin kamera tidak tersedia. Gunakan Sampel Potret atau Unggah Foto!');
-      soundEngine.playCrash();
-    }
+    await openCamera(facingMode);
   };
+
+  const handleSwitchCamera = async () => {
+    const nextFacing = facingMode === 'user' ? 'environment' : 'user';
+    await openCamera(nextFacing);
+  };
+
+  const handleDownloadSnapshot = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const link = document.createElement('a');
+    link.download = `codespark-face-ml-${arFilter}.png`;
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+    markMissionIfReady();
+  };
+
+  const primaryFace = detectedFaces[0];
+  const engineLabel =
+    mlStatus === 'ready_gpu'
+      ? 'MediaPipe Face ML · GPU'
+      : mlStatus === 'ready_cpu'
+        ? 'MediaPipe Face ML · WASM'
+        : mlStatus === 'loading'
+          ? 'Memuat Model ML...'
+          : 'Vision Fallback';
 
   return (
     <div className="space-y-3">
-      <video ref={videoRef} className="hidden" playsInline muted />
+      <canvas ref={frozenFrameCanvasRef} className="hidden" />
+      {/* Keep real video off-screen (NOT display:none) so hardware video frames decode at full FPS */}
+      <video
+        ref={videoRef}
+        className="fixed -left-[9999px] top-0 w-1 h-1 opacity-0 pointer-events-none"
+        playsInline
+        autoPlay
+        muted
+      />
       <input
         ref={fileInputRef}
         type="file"
@@ -1314,12 +1548,18 @@ const FaceDetectionLiveLab: React.FC<{
           </button>
           <button
             type="button"
+            disabled={cameraStarting}
             onClick={() => void handleToggleCamera()}
             className={`neo-btn px-2.5 py-1 text-[11px] font-extrabold inline-flex items-center gap-1 cursor-pointer ${
               sourceKind === 'camera' ? 'bg-[#FB7185]' : 'bg-[#38BDF8]'
             }`}
           >
-            {sourceKind === 'camera' ? (
+            {cameraStarting ? (
+              <>
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                Membuka...
+              </>
+            ) : sourceKind === 'camera' ? (
               <>
                 <CameraOff className="w-3.5 h-3.5" />
                 Stop Kamera
@@ -1327,15 +1567,61 @@ const FaceDetectionLiveLab: React.FC<{
             ) : (
               <>
                 <Camera className="w-3.5 h-3.5" />
-                Kamera
+                Kamera Live
               </>
             )}
           </button>
         </div>
       </div>
 
+      {/* Live Camera Controls Strip */}
+      {sourceKind === 'camera' && (
+        <div className="flex flex-wrap items-center justify-between gap-2 px-2.5 py-2 bg-[#DCFCE7] border-2 border-black text-[11px]">
+          <div className="flex items-center gap-1.5 font-extrabold truncate max-w-[210px]">
+            <span className="w-2.5 h-2.5 rounded-full bg-red-600 animate-pulse shrink-0" />
+            <span className="truncate">{cameraLabel || 'Kamera Aktif'}</span>
+          </div>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => {
+                setMirrorCamera((m) => !m);
+                soundEngine.playButtonClick();
+              }}
+              className={`px-2 py-0.5 border border-black font-extrabold inline-flex items-center gap-1 cursor-pointer ${
+                mirrorCamera ? 'bg-[#FFE600]' : 'bg-white'
+              }`}
+            >
+              <FlipHorizontal2 className="w-3 h-3" />
+              Mirror
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleSwitchCamera()}
+              className="px-2 py-0.5 border border-black bg-white font-extrabold inline-flex items-center gap-1 cursor-pointer hover:bg-[#FFE600]"
+            >
+              <SwitchCamera className="w-3 h-3" />
+              Ganti
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setCameraFrozen((f) => !f);
+                soundEngine.playButtonClick();
+              }}
+              className={`px-2 py-0.5 border border-black font-extrabold inline-flex items-center gap-1 cursor-pointer ${
+                cameraFrozen ? 'bg-[#4ADE80]' : 'bg-white'
+              }`}
+            >
+              {cameraFrozen ? <Play className="w-3 h-3" /> : <Pause className="w-3 h-3" />}
+              {cameraFrozen ? 'Lanjut' : 'Bekukan'}
+            </button>
+          </div>
+        </div>
+      )}
+
       {cameraError && (
-        <div className="p-2 bg-[#FB7185]/25 border-2 border-black text-[11px] font-bold">
+        <div className="p-2.5 bg-[#FB7185]/25 border-2 border-black text-[11px] font-bold leading-relaxed">
           {cameraError}
         </div>
       )}
@@ -1343,11 +1629,49 @@ const FaceDetectionLiveLab: React.FC<{
       {/* Detection Stage */}
       <div className="relative border-[3px] border-black bg-[#0F172A] overflow-hidden">
         <canvas ref={canvasRef} className="w-full h-auto block" />
+        <div className="absolute top-2 left-2 px-2 py-0.5 bg-black/85 text-[#38BDF8] font-mono text-[10px] font-extrabold border border-white/25 inline-flex items-center gap-1">
+          {mlStatus === 'loading' ? (
+            <Loader2 className="w-3 h-3 animate-spin" />
+          ) : (
+            <Zap className="w-3 h-3 text-[#FFE600]" />
+          )}
+          {engineLabel}
+        </div>
+        <div className="absolute top-2 right-2 px-2 py-0.5 bg-black/85 text-[#FFE600] font-mono text-[10px] font-bold border border-white/25">
+          {sourceKind === 'camera' && !cameraFrozen ? `${liveFps} FPS · ` : ''}
+          {inferenceMs} ms
+        </div>
         <div className="absolute bottom-2 left-2 px-2 py-0.5 bg-black/85 text-[#4ADE80] font-mono text-[10px] font-extrabold border border-white/25 inline-flex items-center gap-1.5">
           <ScanFace className="w-3.5 h-3.5" />
           TERDETEKSI: {detectedFaces.length} WAJAH
+          {primaryFace ? ` · ${primaryFace.expression.toUpperCase()}` : ''}
         </div>
       </div>
+
+      {/* Real-time ML Expression Blendshape Bars */}
+      {primaryFace?.blendshapes && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 p-2.5 bg-[#FFFDF7] border-2 border-black text-[11px]">
+          {[
+            { label: 'Senyum', value: primaryFace.blendshapes.smile, color: '#4ADE80' },
+            { label: 'Terkejut', value: primaryFace.blendshapes.surprise, color: '#FFE600' },
+            { label: 'Fokus', value: primaryFace.blendshapes.focus, color: '#38BDF8' },
+            { label: 'Kedip', value: primaryFace.blendshapes.blink, color: '#C084FC' },
+          ].map((metric) => (
+            <div key={metric.label} className="space-y-1">
+              <div className="flex justify-between font-extrabold tabular-nums">
+                <span>{metric.label}</span>
+                <span className="font-mono">{metric.value}%</span>
+              </div>
+              <div className="h-2 bg-neutral-200 border border-black">
+                <div
+                  className="h-full transition-all duration-100"
+                  style={{ width: `${Math.min(100, metric.value)}%`, backgroundColor: metric.color }}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Vision Overlay Toggles */}
       <div className="grid grid-cols-3 gap-2">
@@ -1373,7 +1697,7 @@ const FaceDetectionLiveLab: React.FC<{
             showLandmarks ? 'bg-[#38BDF8]' : 'bg-white'
           }`}
         >
-          Landmark: {showLandmarks ? 'ON' : 'OFF'}
+          Mesh / Titik: {showLandmarks ? 'ON' : 'OFF'}
         </button>
         <button
           type="button"
@@ -1389,7 +1713,7 @@ const FaceDetectionLiveLab: React.FC<{
         </button>
       </div>
 
-      {/* AR Filter + Scan Verify Button */}
+      {/* AR Filter + Scan/Export Buttons */}
       <div className="flex flex-wrap items-center justify-between gap-2 p-2.5 bg-[#FFFDF7] border-2 border-black">
         <div className="flex flex-wrap items-center gap-1.5">
           <span className="text-[11px] font-extrabold">Filter AR:</span>
@@ -1414,22 +1738,32 @@ const FaceDetectionLiveLab: React.FC<{
           ))}
         </div>
 
-        <button
-          type="button"
-          onClick={() => {
-            runFaceDetection();
-            markMissionIfReady();
-          }}
-          className="neo-btn bg-[#4ADE80] px-3 py-1.5 text-xs font-extrabold inline-flex items-center gap-1 cursor-pointer"
-        >
-          <Eye className="w-3.5 h-3.5" />
-          Pindai &amp; Verifikasi
-        </button>
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={handleDownloadSnapshot}
+            className="neo-btn bg-[#FFE600] px-2.5 py-1.5 text-xs font-extrabold inline-flex items-center gap-1 cursor-pointer"
+          >
+            <Download className="w-3.5 h-3.5" />
+            Simpan Foto
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              renderStaticFaceDetection();
+              markMissionIfReady();
+            }}
+            className="neo-btn bg-[#4ADE80] px-3 py-1.5 text-xs font-extrabold inline-flex items-center gap-1 cursor-pointer"
+          >
+            <Eye className="w-3.5 h-3.5" />
+            Verifikasi
+          </button>
+        </div>
       </div>
 
       {!ready && (
         <div className="p-2.5 bg-[#FFE600]/45 border-2 border-black text-xs font-bold">
-          Susun semua 4 blok pipeline Face Detection di kiri lalu uji Filter AR / Pindai untuk menyelesaikan proyek!
+          Susun semua 4 blok pipeline Face Detection di kiri lalu uji Kamera Live / Filter AR untuk menyelesaikan proyek!
         </div>
       )}
     </div>
