@@ -24,7 +24,12 @@ import {
   Phone,
   MessageCircle,
   Save,
-  Cloud,
+  BookOpen,
+  Gamepad2,
+  Play,
+  ArrowLeft,
+  Unlock,
+  Lightbulb,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -41,12 +46,19 @@ import {
   Tooltip,
   Legend,
 } from 'recharts';
-import type { AppSession, CertificateRecord, DataStoreSnapshot } from '../types';
+import type {
+  AppSession,
+  CertificateRecord,
+  DataStoreSnapshot,
+  TierId,
+} from '../types';
 import { dataEngine } from '../services/dataEngine';
-import { connectFirebaseWithGoogle } from '../lib/firebase';
-import { LEVELS, TIERS } from '../data/levels';
+import { LEVELS, TIERS, getLevelById, getLevelsByTier, getTierMeta } from '../data/levels';
+import { blocksToCode } from '../engine/interpreter';
+import { soundEngine } from '../engine/soundEngine';
 import { formatShortDate, formatWhatsAppUrl, generateAccessCode } from '../utils/crypto';
 import { CertificateView } from './CertificateView';
+import { CodingStudio } from './CodingStudio';
 
 interface Props {
   session: AppSession;
@@ -54,7 +66,7 @@ interface Props {
   onLogout: () => void;
 }
 
-type AdminTab = 'analytics' | 'instructors' | 'codes' | 'students' | 'settings';
+type AdminTab = 'analytics' | 'instructors' | 'codes' | 'students' | 'preview' | 'settings';
 
 const PIE_COLORS = ['#FFE600', '#4ADE80', '#38BDF8', '#C084FC', '#FB7185', '#FDBA74'];
 
@@ -101,6 +113,40 @@ export const AdminDashboard: React.FC<Props> = ({ session, store, onLogout }) =>
   const [searchQuery, setSearchQuery] = useState('');
   const [filterInstructor, setFilterInstructor] = useState('ALL');
   const [previewCert, setPreviewCert] = useState<CertificateRecord | null>(null);
+
+  // Admin Full Materials & Unlocked Studio Preview State
+  const [previewView, setPreviewView] = useState<'materials' | 'studio'>('materials');
+  const [previewLevelId, setPreviewLevelId] = useState<string>('p1');
+  const [previewTierFilter, setPreviewTierFilter] = useState<'ALL' | TierId>('ALL');
+  const [previewStars, setPreviewStars] = useState<Record<string, 1 | 2 | 3>>({});
+
+  const previewLevel = getLevelById(previewLevelId) || LEVELS[0];
+  const previewPrevLevel = LEVELS.find((l) => l.order === previewLevel.order - 1);
+  const previewNextLevel = LEVELS.find((l) => l.order === previewLevel.order + 1);
+
+  const openSampleCertificate = (tierId: TierId) => {
+    const tierMeta = getTierMeta(tierId);
+    setPreviewCert({
+      id: `preview_cert_${tierId}`,
+      certificateNo: `CS-2026-${tierId.slice(0, 3).toUpperCase()}-DEMO`,
+      studentId: 'admin_preview',
+      studentName: `${session.name} (Contoh Sertifikat)`,
+      tierId,
+      tierName: tierMeta.certificateTitle,
+      instructorName: 'Admin CodeSpark (Pak GuruAI)',
+      instructorUid: 'admin',
+      ownerUid: 'admin',
+      issuedAt: new Date().toISOString(),
+    });
+  };
+
+  const openLevelInPreviewStudio = (levelId: string) => {
+    soundEngine.playButtonClick();
+    setPreviewLevelId(levelId);
+    setActiveTab('preview');
+    setPreviewView('studio');
+    setDrawerOpen(false);
+  };
 
   // ==================== ANALYTICS DATA ====================
 
@@ -267,19 +313,22 @@ export const AdminDashboard: React.FC<Props> = ({ session, store, onLogout }) =>
     setTimeout(() => setCopiedId(null), 1600);
   };
 
-  const navItems: { id: AdminTab; label: string; icon: typeof BarChart3 }[] = [
-    { id: 'analytics', label: 'Analitik Realtime', icon: BarChart3 },
-    { id: 'instructors', label: `Instruktur (${store.instructors.length})`, icon: Users },
-    { id: 'codes', label: `Kode Akses (${store.accessCodes.length})`, icon: KeyRound },
-    { id: 'students', label: `Semua Siswa (${store.students.length})`, icon: GraduationCap },
-    { id: 'settings', label: 'Pengaturan', icon: Settings },
+  const navItems: { id: AdminTab; label: string; shortLabel: string; icon: typeof BarChart3 }[] = [
+    { id: 'analytics', label: 'Analitik Realtime', shortLabel: 'Analitik', icon: BarChart3 },
+    { id: 'instructors', label: `Instruktur (${store.instructors.length})`, shortLabel: 'Instruktur', icon: Users },
+    { id: 'codes', label: `Kode Akses (${store.accessCodes.length})`, shortLabel: 'Kode', icon: KeyRound },
+    { id: 'students', label: `Semua Siswa (${store.students.length})`, shortLabel: 'Siswa', icon: GraduationCap },
+    { id: 'preview', label: 'Materi & Studio (L1–L9)', shortLabel: 'Studio', icon: Gamepad2 },
+    { id: 'settings', label: 'Pengaturan', shortLabel: 'Setting', icon: Settings },
   ];
 
+  const isFullscreenStudioPreview = activeTab === 'preview' && previewView === 'studio';
+
   return (
-    <div className="min-h-screen bg-[#FFFDF7] flex flex-col">
+    <div className={`min-h-screen flex flex-col ${isFullscreenStudioPreview ? 'bg-[#333840]' : 'bg-[#FFFDF7]'}`}>
       {/* Header */}
       <header className="no-print sticky top-0 z-30 bg-[#FFFDF7] border-b-[3px] border-black">
-        <div className="max-w-[1440px] mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
+        <div className="max-w-[1440px] mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
             <button
               type="button"
@@ -300,17 +349,175 @@ export const AdminDashboard: React.FC<Props> = ({ session, store, onLogout }) =>
             </span>
           </div>
 
-          <button
-            type="button"
-            onClick={onLogout}
-            className="neo-btn bg-[#FB7185] px-3.5 py-2 text-xs sm:text-sm font-extrabold inline-flex items-center gap-1.5 cursor-pointer"
-          >
-            <LogOut className="w-4 h-4" />
-            <span>Keluar</span>
-          </button>
+          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+            <button
+              type="button"
+              onClick={() => {
+                soundEngine.playButtonClick();
+                if (activeTab === 'preview' && previewView === 'studio') {
+                  setPreviewView('materials');
+                } else {
+                  setActiveTab('preview');
+                  setPreviewView('studio');
+                }
+              }}
+              className={`neo-btn px-3 py-2 text-xs sm:text-sm font-extrabold inline-flex items-center gap-1.5 cursor-pointer ${
+                activeTab === 'preview' ? 'bg-[#FFE600]' : 'bg-[#4ADE80]'
+              }`}
+            >
+              <Gamepad2 className="w-4 h-4 shrink-0" />
+              <span className="hidden sm:inline">
+                {isFullscreenStudioPreview ? 'Daftar Materi' : 'Studio Peserta (L1–L9)'}
+              </span>
+              <span className="sm:hidden">Studio</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                soundEngine.stopBgm();
+                onLogout();
+              }}
+              className="neo-btn bg-[#FB7185] px-3.5 py-2 text-xs sm:text-sm font-extrabold inline-flex items-center gap-1.5 cursor-pointer"
+            >
+              <LogOut className="w-4 h-4" />
+              <span>Keluar</span>
+            </button>
+          </div>
         </div>
       </header>
 
+      {/* Mobile/Tablet Drawer */}
+      {drawerOpen && (
+        <div
+          className="no-print lg:hidden fixed inset-0 z-40 bg-black/50"
+          onClick={() => setDrawerOpen(false)}
+        >
+          <div
+            className="w-72 h-full bg-white border-r-[3px] border-black p-5 flex flex-col justify-between text-black"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="space-y-5">
+              <div className="flex items-center justify-between">
+                <span className="font-display font-extrabold text-lg">Menu Admin</span>
+                <button
+                  type="button"
+                  onClick={() => setDrawerOpen(false)}
+                  className="neo-btn bg-white p-1.5 cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <nav className="space-y-2">
+                {navItems.map((item) => {
+                  const Icon = item.icon;
+                  const active = activeTab === item.id;
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => {
+                        setActiveTab(item.id);
+                        if (item.id === 'preview') setPreviewView('materials');
+                        setDrawerOpen(false);
+                      }}
+                      className={`w-full text-left px-4 py-3 border-2 border-black font-extrabold text-sm flex items-center gap-2.5 cursor-pointer ${
+                        active ? 'bg-[#C084FC]' : 'bg-white'
+                      }`}
+                    >
+                      <Icon className="w-4 h-4" />
+                      <span>{item.label}</span>
+                    </button>
+                  );
+                })}
+              </nav>
+            </div>
+            <div className="text-[11px] font-bold text-neutral-600">
+              © 2026 CodeSpark · @copyright Pak GuruAI
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isFullscreenStudioPreview ? (
+        /* FULLSCREEN UNLOCKED STUDENT STUDIO PREVIEW FOR ADMIN */
+        <div className="no-print flex-1 flex flex-col pb-14 lg:pb-0">
+          {/* Admin Studio Preview Control Ribbon */}
+          <div className="bg-[#23272F] text-white border-b-2 border-black px-3 sm:px-5 py-2.5 flex flex-wrap items-center justify-between gap-2.5">
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  soundEngine.playButtonClick();
+                  setPreviewView('materials');
+                }}
+                className="px-3 py-1.5 rounded bg-[#3A414E] hover:bg-[#4B5465] border border-white/20 text-xs font-extrabold inline-flex items-center gap-1.5 cursor-pointer"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" />
+                Semua Materi
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  soundEngine.playButtonClick();
+                  setActiveTab('analytics');
+                }}
+                className="px-3 py-1.5 rounded bg-[#C084FC] text-black border border-black text-xs font-extrabold cursor-pointer"
+              >
+                Dashboard Admin
+              </button>
+              <span className="hidden xl:inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-[#FFE600] text-black text-[11px] font-extrabold">
+                <Unlock className="w-3.5 h-3.5" />
+                Mode Pratinjau Admin · Semua 9 Level Terbuka
+              </span>
+            </div>
+
+            {/* Instant Level 1..9 Switcher */}
+            <div className="flex items-center gap-1 overflow-x-auto max-w-full">
+              {LEVELS.map((lvl) => {
+                const active = lvl.id === previewLevel.id;
+                return (
+                  <button
+                    key={lvl.id}
+                    type="button"
+                    onClick={() => {
+                      soundEngine.playButtonClick();
+                      setPreviewLevelId(lvl.id);
+                    }}
+                    title={`Level ${lvl.order}: ${lvl.title} (${lvl.tierLabel})`}
+                    className={`px-2.5 py-1 rounded font-mono text-xs font-extrabold border cursor-pointer shrink-0 ${
+                      active
+                        ? 'bg-[#4ADE80] text-black border-black shadow'
+                        : 'bg-[#3A414E] text-neutral-200 border-white/15 hover:bg-[#4D5666]'
+                    }`}
+                  >
+                    L{lvl.order}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <CodingStudio
+            level={previewLevel}
+            prevLevel={previewPrevLevel}
+            nextLevel={previewNextLevel}
+            canGoNext={Boolean(previewNextLevel)}
+            previousBestStars={previewStars[previewLevel.id] || 0}
+            isTrialStudent={false}
+            onBackToMap={() => setPreviewView('materials')}
+            onSelectLevel={(id) => setPreviewLevelId(id)}
+            onOpenCertificates={() => openSampleCertificate(previewLevel.tier)}
+            onLevelComplete={async ({ levelId, stars }) => {
+              setPreviewStars((prev) => ({
+                ...prev,
+                [levelId]: Math.max(prev[levelId] || 0, stars) as 1 | 2 | 3,
+              }));
+              return { newCertificate: null };
+            }}
+          />
+        </div>
+      ) : (
       <div className="no-print flex-1 flex max-w-[1440px] w-full mx-auto">
         {/* Desktop Sidebar */}
         <aside className="hidden lg:flex w-64 shrink-0 border-r-[3px] border-black bg-white p-5 flex-col justify-between">
@@ -326,95 +533,33 @@ export const AdminDashboard: React.FC<Props> = ({ session, store, onLogout }) =>
                 const Icon = item.icon;
                 const active = activeTab === item.id;
                 return (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => setActiveTab(item.id)}
-                    className={`w-full text-left px-4 py-3 border-2 border-black font-extrabold text-sm flex items-center gap-2.5 cursor-pointer ${
-                      active
-                        ? 'bg-[#C084FC] shadow-[3px_3px_0px_0px_#000]'
-                        : 'bg-white hover:bg-[#FFFDF7]'
-                    }`}
-                  >
-                    <Icon className="w-4 h-4 shrink-0" />
-                    <span>{item.label}</span>
-                  </button>
-                );
-              })}
-            </nav>
-          </div>
-          <div className="text-[11px] font-bold text-neutral-600 pt-6 border-t-2 border-black/15">
-            © 2026 CodeSpark · @copyright Pak GuruAI
-          </div>
-        </aside>
-
-        {/* Mobile/Tablet Drawer */}
-        {drawerOpen && (
-          <div className="lg:hidden fixed inset-0 z-40 bg-black/50" onClick={() => setDrawerOpen(false)}>
-            <div
-              className="w-72 h-full bg-white border-r-[3px] border-black p-5 flex flex-col justify-between"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="space-y-5">
-                <div className="flex items-center justify-between">
-                  <span className="font-display font-extrabold text-lg">Menu Admin</span>
-                  <button
-                    type="button"
-                    onClick={() => setDrawerOpen(false)}
-                    className="neo-btn bg-white p-1.5 cursor-pointer"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
-                <nav className="space-y-2">
-                  {navItems.map((item) => {
-                    const Icon = item.icon;
-                    const active = activeTab === item.id;
-                    return (
-                      <button
-                        key={item.id}
-                        type="button"
-                        onClick={() => {
-                          setActiveTab(item.id);
-                          setDrawerOpen(false);
-                        }}
-                        className={`w-full text-left px-4 py-3 border-2 border-black font-extrabold text-sm flex items-center gap-2.5 cursor-pointer ${
-                          active ? 'bg-[#C084FC]' : 'bg-white'
-                        }`}
-                      >
-                        <Icon className="w-4 h-4" />
-                        <span>{item.label}</span>
-                      </button>
-                    );
-                  })}
-                </nav>
-              </div>
-              <div className="text-[11px] font-bold text-neutral-600">
-                © 2026 CodeSpark · @copyright Pak GuruAI
-              </div>
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => {
+                        setActiveTab(item.id);
+                        if (item.id === 'preview') setPreviewView('materials');
+                      }}
+                      className={`w-full text-left px-4 py-3 border-2 border-black font-extrabold text-sm flex items-center gap-2.5 cursor-pointer ${
+                        active
+                          ? 'bg-[#C084FC] shadow-[3px_3px_0px_0px_#000]'
+                          : 'bg-white hover:bg-[#FFFDF7]'
+                      }`}
+                    >
+                      <Icon className="w-4 h-4 shrink-0" />
+                      <span>{item.label}</span>
+                    </button>
+                  );
+                })}
+              </nav>
             </div>
-          </div>
-        )}
+            <div className="text-[11px] font-bold text-neutral-600 pt-6 border-t-2 border-black/15">
+              © 2026 CodeSpark · @copyright Pak GuruAI
+            </div>
+          </aside>
 
         {/* Main Content */}
         <main className="flex-1 p-4 sm:p-6 lg:p-8 pb-24 lg:pb-12 space-y-8 overflow-x-hidden">
-          {store.mode !== 'firebase' && (
-            <div className="neo-card bg-[#FFE600] p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div className="text-xs sm:text-sm font-bold text-black leading-relaxed">
-                <strong>Sinkronisasi Firebase Cloud (`codespark-a5c49`) siap dihubungkan!</strong>{' '}
-                Masuk dengan akun Google Admin (<code className="font-mono">pakguruluky@gmail.com</code>) untuk mengaktifkan penyimpanan &amp; analitik Cloud Firestore realtime lintas perangkat.
-              </div>
-              <button
-                type="button"
-                onClick={() => void connectFirebaseWithGoogle().catch(() => undefined)}
-                className="neo-btn bg-[#4ADE80] px-4 py-2 text-xs sm:text-sm font-extrabold inline-flex items-center justify-center gap-2 shrink-0 cursor-pointer"
-              >
-                <Cloud className="w-4 h-4" />
-                Hubungkan Firebase (Google)
-              </button>
-            </div>
-          )}
-
           {/* 4 Realtime KPI Cards */}
           <div className="grid grid-cols-2 xl:grid-cols-4 gap-4 sm:gap-5">
             {[
@@ -1222,11 +1367,167 @@ export const AdminDashboard: React.FC<Props> = ({ session, store, onLogout }) =>
               </div>
             </div>
           )}
+
+          {/* ALL MATERIALS & UNLOCKED STUDENT STUDIO PREVIEW TAB */}
+          {activeTab === 'preview' && previewView === 'materials' && (
+            <div className="space-y-6">
+              <div className="neo-card bg-[#FFE600] p-5 sm:p-6 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                <div className="space-y-1.5">
+                  <div className="inline-flex items-center gap-1.5 bg-white border-2 border-black px-2.5 py-0.5 text-xs font-extrabold">
+                    <Unlock className="w-3.5 h-3.5" />
+                    Akses Penuh Administrator · Seluruh 9 Level Terbuka
+                  </div>
+                  <h2 className="font-display text-2xl sm:text-3xl font-extrabold">
+                    Seluruh Materi Kurikulum &amp; Studio Peserta
+                  </h2>
+                  <p className="text-xs sm:text-sm font-semibold text-neutral-900 max-w-2xl leading-relaxed">
+                    Tinjau seluruh materi, misi, petunjuk Panda, kode awal, pratinjau sertifikat, dan uji langsung
+                    Coding Studio peserta dari Level 1 sampai Level 9 tanpa terkunci (tidak mengubah data siswa).
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => openLevelInPreviewStudio(previewLevelId)}
+                  className="neo-btn bg-black text-white px-5 py-3 text-sm font-extrabold inline-flex items-center justify-center gap-2 shrink-0 cursor-pointer"
+                >
+                  <Gamepad2 className="w-5 h-5" />
+                  Buka Coding Studio (L{previewLevel.order})
+                </button>
+              </div>
+
+              {/* Tier Filter Bar */}
+              <div className="flex flex-wrap items-center gap-2">
+                {[
+                  { id: 'ALL' as const, label: 'Semua Tingkatan (9 Level)' },
+                  ...TIERS.map((t) => ({ id: t.id, label: `${t.number}. ${t.name} (3 Level)` })),
+                ].map((opt) => (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => setPreviewTierFilter(opt.id)}
+                    className={`neo-btn px-3.5 py-2 text-xs font-extrabold cursor-pointer ${
+                      previewTierFilter === opt.id ? 'bg-[#C084FC]' : 'bg-white'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Tiers & Level Material Cards */}
+              <div className="space-y-8">
+                {TIERS.filter((t) => previewTierFilter === 'ALL' || t.id === previewTierFilter).map(
+                  (tier) => {
+                    const tierLevels = getLevelsByTier(tier.id);
+                    return (
+                      <section key={tier.id} className="space-y-4">
+                        <div className="flex flex-wrap items-center justify-between gap-3 pb-2 border-b-[3px] border-black">
+                          <div>
+                            <h3 className="font-display text-xl sm:text-2xl font-extrabold flex items-center gap-2">
+                              <BookOpen className="w-5 h-5 shrink-0" />
+                              {tier.number}. {tier.name} — {tier.subtitle}
+                            </h3>
+                            <p className="text-xs sm:text-sm text-neutral-700 mt-0.5">{tier.description}</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => openSampleCertificate(tier.id)}
+                            className="neo-btn bg-[#FFE600] px-3.5 py-2 text-xs font-extrabold inline-flex items-center gap-1.5 cursor-pointer"
+                          >
+                            <Award className="w-4 h-4" />
+                            Pratinjau Sertifikat {tier.shortName}
+                          </button>
+                        </div>
+
+                        <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-5">
+                          {tierLevels.map((lvl) => {
+                            const starterPy = blocksToCode(lvl.starterBlocks, 'python');
+                            const testedStars = previewStars[lvl.id] || 0;
+                            return (
+                              <div
+                                key={lvl.id}
+                                className="neo-card bg-white p-5 flex flex-col justify-between gap-4"
+                              >
+                                <div className="space-y-3">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <span
+                                      className="px-2.5 py-1 border-2 border-black font-mono text-xs font-extrabold"
+                                      style={{ backgroundColor: tier.accentColor }}
+                                    >
+                                      Level {lvl.order} · Terbuka
+                                    </span>
+                                    <div className="flex items-center gap-0.5" title="Hasil uji coba Admin">
+                                      {[1, 2, 3].map((s) => (
+                                        <Star
+                                          key={s}
+                                          className={`w-4 h-4 ${
+                                            s <= testedStars
+                                              ? 'fill-[#FFE600] text-black'
+                                              : 'text-neutral-300'
+                                          }`}
+                                        />
+                                      ))}
+                                    </div>
+                                  </div>
+
+                                  <div>
+                                    <h4 className="font-display text-lg font-extrabold">{lvl.title}</h4>
+                                    <p className="text-xs font-semibold text-neutral-600">{lvl.subtitle}</p>
+                                  </div>
+
+                                  <div className="space-y-2 text-xs">
+                                    <div className="p-2.5 bg-[#FFFDF7] border border-black/30">
+                                      <div className="font-extrabold text-black mb-0.5">Konsep Materi:</div>
+                                      <p className="text-neutral-700 leading-relaxed">{lvl.concept}</p>
+                                    </div>
+
+                                    <div className="p-2.5 bg-[#FFFDF7] border border-black/30">
+                                      <div className="font-extrabold text-black mb-0.5">Misi Peserta:</div>
+                                      <p className="text-neutral-700 leading-relaxed">{lvl.mission}</p>
+                                    </div>
+
+                                    <div className="p-2.5 bg-[#38BDF8]/15 border border-black/30 flex items-start gap-1.5">
+                                      <Lightbulb className="w-3.5 h-3.5 shrink-0 mt-0.5 text-amber-700" />
+                                      <p className="text-neutral-800 leading-relaxed">
+                                        <strong>Hint Panda:</strong> {lvl.hint}
+                                      </p>
+                                    </div>
+
+                                    <div className="p-2.5 bg-neutral-950 text-[#4ADE80] border-2 border-black font-mono text-[11px] overflow-x-auto">
+                                      <div className="text-neutral-400 text-[10px] mb-1 flex justify-between">
+                                        <span>Kode Awal (Python)</span>
+                                        <span>3★ ≤ {lvl.optimalLines} baris</span>
+                                      </div>
+                                      <pre className="whitespace-pre-wrap">{starterPy || '# kosong'}</pre>
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <button
+                                  type="button"
+                                  onClick={() => openLevelInPreviewStudio(lvl.id)}
+                                  className="neo-btn bg-[#4ADE80] w-full py-2.5 px-3 text-xs sm:text-sm font-extrabold inline-flex items-center justify-center gap-1.5 cursor-pointer"
+                                >
+                                  <Play className="w-4 h-4 fill-black" />
+                                  Buka Level {lvl.order} di Studio Peserta
+                                </button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </section>
+                    );
+                  }
+                )}
+              </div>
+            </div>
+          )}
         </main>
       </div>
+      )}
 
       {/* Mobile Bottom Nav */}
-      <nav className="no-print lg:hidden fixed bottom-0 inset-x-0 z-30 bg-white border-t-[3px] border-black grid grid-cols-5 h-14">
+      <nav className="no-print lg:hidden fixed bottom-0 inset-x-0 z-30 bg-white border-t-[3px] border-black grid grid-cols-6 h-14">
         {navItems.map((item) => {
           const Icon = item.icon;
           const active = activeTab === item.id;
@@ -1234,13 +1535,16 @@ export const AdminDashboard: React.FC<Props> = ({ session, store, onLogout }) =>
             <button
               key={item.id}
               type="button"
-              onClick={() => setActiveTab(item.id)}
+              onClick={() => {
+                setActiveTab(item.id);
+                if (item.id === 'preview') setPreviewView('materials');
+              }}
               className={`flex flex-col items-center justify-center gap-0.5 text-[10px] font-extrabold cursor-pointer ${
                 active ? 'bg-[#C084FC]' : 'bg-white'
               }`}
             >
               <Icon className="w-4 h-4" />
-              <span className="truncate max-w-full px-1">{item.label.split(' ')[0]}</span>
+              <span className="truncate max-w-full px-0.5">{item.shortLabel}</span>
             </button>
           );
         })}
