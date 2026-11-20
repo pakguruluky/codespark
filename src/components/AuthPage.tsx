@@ -16,6 +16,7 @@ import {
   Code2,
   Layers,
   Gamepad2,
+  Cpu,
 } from 'lucide-react';
 import { dataEngine } from '../services/dataEngine';
 import { connectFirebaseWithGoogle } from '../lib/firebase';
@@ -51,6 +52,7 @@ export const AuthPage: React.FC<Props> = ({
   const [regCode, setRegCode] = useState('');
   const [regWantAppMaker, setRegWantAppMaker] = useState(false);
   const [regWantGameMaker, setRegWantGameMaker] = useState(false);
+  const [regWantAiMl, setRegWantAiMl] = useState(false);
   const [showRegPass, setShowRegPass] = useState(false);
 
   const [loading, setLoading] = useState(false);
@@ -106,6 +108,8 @@ export const AuthPage: React.FC<Props> = ({
         requestedAppMaker: student.requestedAppMaker,
         hasGameMakerAccess: student.hasGameMakerAccess,
         requestedGameMaker: student.requestedGameMaker,
+        hasAiMlAccess: student.hasAiMlAccess,
+        requestedAiMl: student.requestedAiMl,
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Gagal masuk ke sistem.');
@@ -126,6 +130,7 @@ export const AuthPage: React.FC<Props> = ({
         accessCode: regCode,
         requestedAppMaker: regWantAppMaker,
         requestedGameMaker: regWantGameMaker,
+        requestedAiMl: regWantAiMl,
       });
       onAuthenticated({
         role: 'student',
@@ -141,6 +146,8 @@ export const AuthPage: React.FC<Props> = ({
         requestedAppMaker: student.requestedAppMaker,
         hasGameMakerAccess: student.hasGameMakerAccess,
         requestedGameMaker: student.requestedGameMaker,
+        hasAiMlAccess: student.hasAiMlAccess,
+        requestedAiMl: student.requestedAiMl,
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Pendaftaran siswa gagal.');
@@ -506,6 +513,37 @@ export const AuthPage: React.FC<Props> = ({
                       </div>
                       <p className="text-[11px] text-neutral-700 mt-0.5 leading-snug">
                         Proyek game bertahap: Image Match, Memory Card, Color Puzzle, Save the Polar Bear &amp; Space Mission. Terbuka lewat Kode Akses Game Maker atau aktivasi Admin.
+                      </p>
+                    </div>
+                  </button>
+
+                  {/* Optional AI-ML */}
+                  <button
+                    type="button"
+                    onClick={() => setRegWantAiMl((v) => !v)}
+                    className={`w-full text-left p-3 border-2 border-black flex items-start gap-2.5 cursor-pointer transition-colors ${
+                      regWantAiMl
+                        ? 'bg-[#FDBA74]/35 shadow-[3px_3px_0px_0px_#000]'
+                        : 'bg-white hover:bg-[#FFFDF7]'
+                    }`}
+                  >
+                    <span
+                      className={`w-5 h-5 mt-0.5 border-2 border-black flex items-center justify-center shrink-0 ${
+                        regWantAiMl ? 'bg-[#FDBA74]' : 'bg-white'
+                      }`}
+                    >
+                      {regWantAiMl && <Check className="w-3.5 h-3.5 stroke-[3]" />}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <Cpu className="w-3.5 h-3.5 shrink-0" />
+                        <span className="font-display font-extrabold text-sm">AI-ML Vision</span>
+                        <span className="px-1.5 py-0.5 bg-[#FDBA74] border border-black text-[10px] font-extrabold">
+                          OPSIONAL · 2 PROYEK
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-neutral-700 mt-0.5 leading-snug">
+                        Proyek Computer Vision bertahap: Cartoonizer AI &amp; Face Detection AI (sampel, foto, dan kamera). Terbuka lewat Kode Akses AI-ML atau aktivasi Admin.
                       </p>
                     </div>
                   </button>

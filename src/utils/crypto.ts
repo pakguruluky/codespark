@@ -45,11 +45,13 @@ export function generateCertificateNo(tierId: string): string {
       ? 'APP'
       : tierId === 'game_maker'
         ? 'GMK'
-        : tierId === 'pemula'
-          ? 'PML'
-          : tierId === 'menengah'
-            ? 'MNG'
-            : 'LNJ';
+        : tierId === 'ai_ml'
+          ? 'AIML'
+          : tierId === 'pemula'
+            ? 'PML'
+            : tierId === 'menengah'
+              ? 'MNG'
+              : 'LNJ';
   const rand = Math.floor(1000 + Math.random() * 9000);
   const year = new Date().getFullYear();
   return `CS-${year}-${tierCode}-${rand}`;

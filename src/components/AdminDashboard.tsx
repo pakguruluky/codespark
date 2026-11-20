@@ -32,6 +32,7 @@ import {
   Lightbulb,
   Layers,
   Lock,
+  Cpu,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -49,6 +50,7 @@ import {
   Legend,
 } from 'recharts';
 import type {
+  AiMlProjectId,
   AppMakerProjectId,
   AppSession,
   CertificateRecord,
@@ -60,6 +62,7 @@ import type {
 } from '../types';
 import {
   dataEngine,
+  hasStudentAiMlAccess,
   hasStudentAppMakerAccess,
   hasStudentGameMakerAccess,
 } from '../services/dataEngine';
@@ -67,6 +70,7 @@ import { CHARACTER_META, MascotPortrait, getCharacterForLevel } from './PandaMas
 import { LEVELS, TIERS, getLevelById, getLevelsByTier, getTierMeta } from '../data/levels';
 import { APP_MAKER_PROJECTS } from '../data/appMakerProjects';
 import { GAME_MAKER_PROJECTS } from '../data/gameMakerProjects';
+import { AI_ML_PROJECTS } from '../data/aiMlProjects';
 import { blocksToCode } from '../engine/interpreter';
 import { soundEngine } from '../engine/soundEngine';
 import { formatShortDate, formatWhatsAppUrl, generateAccessCode } from '../utils/crypto';
@@ -74,6 +78,7 @@ import { CertificateView } from './CertificateView';
 import { CodingStudio } from './CodingStudio';
 import { AppMakerWorkspace } from './AppMakerWorkspace';
 import { GameMakerWorkspace } from './GameMakerWorkspace';
+import { AiMlWorkspace } from './AiMlWorkspace';
 import { ModuleGuideModal } from './ModuleGuideModal';
 
 interface Props {
@@ -106,6 +111,7 @@ export const AdminDashboard: React.FC<Props> = ({ session, store, onLogout }) =>
   const [codeIsTrial, setCodeIsTrial] = useState(false);
   const [codeIncludeAppMaker, setCodeIncludeAppMaker] = useState(false);
   const [codeIncludeGameMaker, setCodeIncludeGameMaker] = useState(false);
+  const [codeIncludeAiMl, setCodeIncludeAiMl] = useState(false);
   const [codeLoading, setCodeLoading] = useState(false);
   const [codeError, setCodeError] = useState<string | null>(null);
   const [codeSuccess, setCodeSuccess] = useState<string | null>(null);
@@ -133,17 +139,19 @@ export const AdminDashboard: React.FC<Props> = ({ session, store, onLogout }) =>
   const [previewCert, setPreviewCert] = useState<CertificateRecord | null>(null);
   const [moduleModalTier, setModuleModalTier] = useState<TierId | null>(null);
 
-  // Admin Full Materials & Unlocked Studio/App Maker/Game Maker Preview State
+  // Admin Full Materials & Unlocked Studio/App Maker/Game Maker/AI-ML Preview State
   const [previewView, setPreviewView] = useState<
-    'materials' | 'studio' | 'app_maker' | 'game_maker'
+    'materials' | 'studio' | 'app_maker' | 'game_maker' | 'ai_ml'
   >('materials');
   const [previewLevelId, setPreviewLevelId] = useState<string>('p1');
   const [previewAppProjectId, setPreviewAppProjectId] = useState<AppMakerProjectId | null>(null);
   const [previewGameProjectId, setPreviewGameProjectId] = useState<GameMakerProjectId | null>(null);
+  const [previewAiMlProjectId, setPreviewAiMlProjectId] = useState<AiMlProjectId | null>(null);
   const [previewTierFilter, setPreviewTierFilter] = useState<'ALL' | TierId>('ALL');
   const [previewStars, setPreviewStars] = useState<Record<string, 1 | 2 | 3>>({});
   const [previewAppRecords, setPreviewAppRecords] = useState<Record<string, ProgressRecord>>({});
   const [previewGameRecords, setPreviewGameRecords] = useState<Record<string, ProgressRecord>>({});
+  const [previewAiMlRecords, setPreviewAiMlRecords] = useState<Record<string, ProgressRecord>>({});
 
   const previewAppMakerMap = useMemo(
     () => new Map<string, ProgressRecord>(Object.entries(previewAppRecords)),
@@ -153,6 +161,11 @@ export const AdminDashboard: React.FC<Props> = ({ session, store, onLogout }) =>
   const previewGameMakerMap = useMemo(
     () => new Map<string, ProgressRecord>(Object.entries(previewGameRecords)),
     [previewGameRecords]
+  );
+
+  const previewAiMlMap = useMemo(
+    () => new Map<string, ProgressRecord>(Object.entries(previewAiMlRecords)),
+    [previewAiMlRecords]
   );
 
   const previewLevel = getLevelById(previewLevelId) || LEVELS[0];
@@ -165,13 +178,17 @@ export const AdminDashboard: React.FC<Props> = ({ session, store, onLogout }) =>
         ? 'App Maker: 5 Proyek Aplikasi Interaktif'
         : tierId === 'game_maker'
           ? 'Game Maker: 5 Proyek Game Interaktif'
-          : getTierMeta(tierId).certificateTitle;
+          : tierId === 'ai_ml'
+            ? 'AI-ML: Cartoonizer & Face Detection'
+            : getTierMeta(tierId).certificateTitle;
     const codeTag =
       tierId === 'app_maker'
         ? 'APP'
         : tierId === 'game_maker'
           ? 'GMK'
-          : tierId.slice(0, 3).toUpperCase();
+          : tierId === 'ai_ml'
+            ? 'AIML'
+            : tierId.slice(0, 3).toUpperCase();
     setPreviewCert({
       id: `preview_cert_${tierId}`,
       certificateNo: `CS-2026-${codeTag}-DEMO`,
@@ -210,9 +227,17 @@ export const AdminDashboard: React.FC<Props> = ({ session, store, onLogout }) =>
     setDrawerOpen(false);
   };
 
+  const openAiMlInPreview = (projectId: AiMlProjectId | null = null) => {
+    soundEngine.playButtonClick();
+    setPreviewAiMlProjectId(projectId);
+    setActiveTab('preview');
+    setPreviewView('ai_ml');
+    setDrawerOpen(false);
+  };
+
   // ==================== ANALYTICS DATA ====================
 
-  // 1. Bar Chart: Progress per Tier (Pemula, Menengah, Lanjutan, App Maker, Game Maker)
+  // 1. Bar Chart: Progress per Tier (Pemula, Menengah, Lanjutan, App Maker, Game Maker, AI-ML)
   const tierBarData = useMemo(() => {
     const studioRows = TIERS.map((tier) => {
       const tierProg = store.progress.filter((p) => p.tier === tier.id);
@@ -238,6 +263,13 @@ export const AdminDashboard: React.FC<Props> = ({ session, store, onLogout }) =>
       penyelesaianLevel: gameProg.length,
       siswaAktif: new Set(gameProg.map((p) => p.studentId)).size,
       sertifikat: store.certificates.filter((c) => c.tierId === 'game_maker').length,
+    });
+    const aiMlProg = store.progress.filter((p) => p.tier === 'ai_ml');
+    studioRows.push({
+      name: 'AI-ML',
+      penyelesaianLevel: aiMlProg.length,
+      siswaAktif: new Set(aiMlProg.map((p) => p.studentId)).size,
+      sertifikat: store.certificates.filter((c) => c.tierId === 'ai_ml').length,
     });
     return studioRows;
   }, [store.progress, store.certificates]);
@@ -351,10 +383,12 @@ export const AdminDashboard: React.FC<Props> = ({ session, store, onLogout }) =>
         isTrial: codeIsTrial,
         includeAppMaker: codeIncludeAppMaker,
         includeGameMaker: codeIncludeGameMaker,
+        includeAiMl: codeIncludeAiMl,
       });
       const extraTags = [
         created.includeAppMaker ? ' + App Maker' : '',
         created.includeGameMaker ? ' + Game Maker' : '',
+        created.includeAiMl ? ' + AI-ML' : '',
       ].join('');
       setCodeSuccess(
         `Kode akses "${created.code}" (${created.isTrial ? 'Uji Coba Level 1' : 'Akses Penuh L1–L9'}${extraTags}) untuk kelas "${created.className}" aktif!`
@@ -363,6 +397,7 @@ export const AdminDashboard: React.FC<Props> = ({ session, store, onLogout }) =>
       setCodeIsTrial(false);
       setCodeIncludeAppMaker(false);
       setCodeIncludeGameMaker(false);
+      setCodeIncludeAiMl(false);
       setCodeValue(generateAccessCode('SPARK'));
     } catch (err) {
       setCodeError(err instanceof Error ? err.message : 'Gagal membuat kode akses.');
@@ -1158,6 +1193,33 @@ export const AdminDashboard: React.FC<Props> = ({ session, store, onLogout }) =>
                       </p>
                     </div>
                   </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setCodeIncludeAiMl((v) => !v)}
+                    className={`w-full p-3 border-2 border-black text-left flex items-start gap-2.5 cursor-pointer ${
+                      codeIncludeAiMl
+                        ? 'bg-[#FDBA74]/35 shadow-[2px_2px_0px_0px_#000]'
+                        : 'bg-white'
+                    }`}
+                  >
+                    <span
+                      className={`w-5 h-5 mt-0.5 border-2 border-black flex items-center justify-center shrink-0 ${
+                        codeIncludeAiMl ? 'bg-[#FDBA74]' : 'bg-white'
+                      }`}
+                    >
+                      {codeIncludeAiMl && <Check className="w-3.5 h-3.5 stroke-[3]" />}
+                    </span>
+                    <div className="min-w-0">
+                      <div className="text-xs font-extrabold flex items-center gap-1.5">
+                        <Cpu className="w-3.5 h-3.5" />
+                        Sertakan Akses Program AI-ML (2 Proyek Vision)
+                      </div>
+                      <p className="text-[11px] text-neutral-600 mt-0.5">
+                        Siswa yang mendaftar/upgrade memakai kode ini otomatis mendapat akses Cartoonizer AI &amp; Face Detection AI.
+                      </p>
+                    </div>
+                  </button>
                 </div>
 
                 <button
@@ -1211,6 +1273,11 @@ export const AdminDashboard: React.FC<Props> = ({ session, store, onLogout }) =>
                                 + Game Maker
                               </span>
                             )}
+                            {item.includeAiMl && (
+                              <span className="text-xs font-extrabold px-2 py-0.5 border border-black bg-[#FDBA74]">
+                                + AI-ML
+                              </span>
+                            )}
                             <span className="text-xs font-bold text-neutral-600">
                               · oleh {item.createdByName} ({item.createdByRole})
                             </span>
@@ -1259,6 +1326,19 @@ export const AdminDashboard: React.FC<Props> = ({ session, store, onLogout }) =>
                           >
                             <Gamepad2 className="w-3.5 h-3.5" />
                             {item.includeGameMaker ? 'Game: ON' : '+ Game'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              void dataEngine.toggleAccessCodeAiMl(item.id, !item.includeAiMl)
+                            }
+                            className={`neo-btn px-3 py-1.5 text-xs font-extrabold inline-flex items-center gap-1 cursor-pointer ${
+                              item.includeAiMl ? 'bg-[#FDBA74]' : 'bg-white'
+                            }`}
+                            title="Buka atau tutup akses Program AI-ML untuk kode ini"
+                          >
+                            <Cpu className="w-3.5 h-3.5" />
+                            {item.includeAiMl ? 'AI-ML: ON' : '+ AI-ML'}
                           </button>
                           <button
                             type="button"
@@ -1336,7 +1416,7 @@ export const AdminDashboard: React.FC<Props> = ({ session, store, onLogout }) =>
                         <th className="p-3 border-r-2 border-black">Siswa</th>
                         <th className="p-3 border-r-2 border-black">Instruktur &amp; Kelas</th>
                         <th className="p-3 border-r-2 border-black">Studio (L1–L9)</th>
-                        <th className="p-3 border-r-2 border-black">Akses App &amp; Game Maker</th>
+                        <th className="p-3 border-r-2 border-black">Akses Program Tambahan</th>
                         <th className="p-3 border-r-2 border-black">Bintang</th>
                         <th className="p-3">Sertifikat</th>
                       </tr>
@@ -1345,15 +1425,20 @@ export const AdminDashboard: React.FC<Props> = ({ session, store, onLogout }) =>
                       {filteredStudents.map((stu) => {
                         const stuAllProg = store.progress.filter((p) => p.studentId === stu.id);
                         const stuProg = stuAllProg.filter(
-                          (p) => p.tier !== 'app_maker' && p.tier !== 'game_maker'
+                          (p) =>
+                            p.tier !== 'app_maker' &&
+                            p.tier !== 'game_maker' &&
+                            p.tier !== 'ai_ml'
                         );
                         const stuAppProg = stuAllProg.filter((p) => p.tier === 'app_maker');
                         const stuGameProg = stuAllProg.filter((p) => p.tier === 'game_maker');
+                        const stuAiMlProg = stuAllProg.filter((p) => p.tier === 'ai_ml');
                         const stuStars = stuProg.reduce((a, b) => a + b.stars, 0);
                         const stuCerts = store.certificates.filter((c) => c.studentId === stu.id);
                         const pct = Math.round((stuProg.length / LEVELS.length) * 100);
                         const hasAppMaker = hasStudentAppMakerAccess(stu, store.accessCodes);
                         const hasGameMaker = hasStudentGameMakerAccess(stu, store.accessCodes);
+                        const hasAiMl = hasStudentAiMlAccess(stu, store.accessCodes);
 
                         return (
                           <tr key={stu.id} className="bg-white hover:bg-[#FFFDF7]">
@@ -1443,6 +1528,38 @@ export const AdminDashboard: React.FC<Props> = ({ session, store, onLogout }) =>
                                     {hasGameMaker ? 'Kunci Game' : 'Buka Game'}
                                   </button>
                                 </div>
+
+                                {/* AI-ML Row */}
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                  <span
+                                    className={`px-2 py-0.5 border border-black text-[11px] font-extrabold inline-flex items-center gap-1 ${
+                                      hasAiMl ? 'bg-[#FDBA74]' : 'bg-neutral-200 text-neutral-700'
+                                    }`}
+                                  >
+                                    {hasAiMl ? (
+                                      <Unlock className="w-3 h-3" />
+                                    ) : (
+                                      <Lock className="w-3 h-3" />
+                                    )}
+                                    AI-ML: {hasAiMl ? `${stuAiMlProg.length}/${AI_ML_PROJECTS.length}` : 'Terkunci'}
+                                  </span>
+                                  {stu.requestedAiMl && !hasAiMl && (
+                                    <span className="px-1.5 py-0.5 bg-[#FFE600] border border-black text-[10px] font-extrabold">
+                                      Diminta Siswa
+                                    </span>
+                                  )}
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      void dataEngine.setStudentAiMlAccess(stu.id, !hasAiMl)
+                                    }
+                                    className={`neo-btn px-2 py-0.5 text-[10px] font-extrabold inline-flex items-center gap-1 cursor-pointer ${
+                                      hasAiMl ? 'bg-white' : 'bg-[#4ADE80]'
+                                    }`}
+                                  >
+                                    {hasAiMl ? 'Kunci AI-ML' : 'Buka AI-ML'}
+                                  </button>
+                                </div>
                               </div>
                             </td>
                             <td className="p-3 border-r-2 border-black font-mono font-extrabold tabular-nums">
@@ -1466,7 +1583,9 @@ export const AdminDashboard: React.FC<Props> = ({ session, store, onLogout }) =>
                                           ? 'bg-[#FB7185]'
                                           : c.tierId === 'game_maker'
                                             ? 'bg-[#38BDF8]'
-                                            : 'bg-[#C084FC]'
+                                            : c.tierId === 'ai_ml'
+                                              ? 'bg-[#FDBA74]'
+                                              : 'bg-[#C084FC]'
                                       }`}
                                     >
                                       <Eye className="w-3 h-3" />
@@ -1474,7 +1593,9 @@ export const AdminDashboard: React.FC<Props> = ({ session, store, onLogout }) =>
                                         ? 'App Maker'
                                         : c.tierId === 'game_maker'
                                           ? 'Game Maker'
-                                          : c.tierId}
+                                          : c.tierId === 'ai_ml'
+                                            ? 'AI-ML'
+                                            : c.tierId}
                                     </button>
                                   ))}
                                 </div>
@@ -1737,6 +1858,62 @@ export const AdminDashboard: React.FC<Props> = ({ session, store, onLogout }) =>
             </div>
           )}
 
+          {/* ADMIN UNLOCKED AI-ML PREVIEW VIEW */}
+          {activeTab === 'preview' && previewView === 'ai_ml' && (
+            <div className="space-y-4">
+              <div className="neo-card bg-[#FDBA74]/35 p-4 flex flex-wrap items-center justify-between gap-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      soundEngine.playButtonClick();
+                      setPreviewView('materials');
+                    }}
+                    className="neo-btn bg-white px-3.5 py-2 text-xs font-extrabold inline-flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <ArrowLeft className="w-4 h-4" />
+                    Kembali ke Semua Materi
+                  </button>
+                  <span className="text-xs font-extrabold px-2.5 py-1 bg-[#FFE600] border-2 border-black">
+                    Pratinjau Admin · Cartoonizer AI &amp; Face Detection AI Terbuka
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => openSampleCertificate('ai_ml')}
+                  className="neo-btn bg-[#FFE600] px-3.5 py-2 text-xs font-extrabold inline-flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Award className="w-4 h-4" />
+                  Pratinjau Sertifikat AI-ML
+                </button>
+              </div>
+
+              <AiMlWorkspace
+                hasAccess={true}
+                isAdminPreview={true}
+                initialProjectId={previewAiMlProjectId}
+                completedProgressMap={previewAiMlMap}
+                onOpenCertificates={() => openSampleCertificate('ai_ml')}
+                onProjectComplete={async ({ projectId, stars, codeSubmitted }) => {
+                  const rec: ProgressRecord = {
+                    id: `admin_preview_${projectId}`,
+                    studentId: 'admin_preview',
+                    levelId: projectId,
+                    tier: 'ai_ml',
+                    stars,
+                    codeSubmitted,
+                    language: 'javascript',
+                    ownerUid: 'admin',
+                    instructorUid: 'admin',
+                    completedAt: new Date().toISOString(),
+                  };
+                  setPreviewAiMlRecords((prev) => ({ ...prev, [projectId]: rec }));
+                  return { newCertificate: null };
+                }}
+              />
+            </div>
+          )}
+
           {/* ALL MATERIALS & UNLOCKED STUDENT STUDIO PREVIEW TAB */}
           {activeTab === 'preview' && previewView === 'materials' && (
             <div className="space-y-6">
@@ -1744,43 +1921,106 @@ export const AdminDashboard: React.FC<Props> = ({ session, store, onLogout }) =>
                 <div className="space-y-1.5">
                   <div className="inline-flex items-center gap-1.5 bg-white border-2 border-black px-2.5 py-0.5 text-xs font-extrabold">
                     <Unlock className="w-3.5 h-3.5" />
-                    Akses Penuh Administrator · 9 Level Studio, 5 Proyek App Maker &amp; 5 Game Maker Terbuka
+                    Akses Penuh Administrator · Studio, App Maker, Game Maker &amp; AI-ML Terbuka
                   </div>
                   <h2 className="font-display text-2xl sm:text-3xl font-extrabold">
-                    Seluruh Materi Kurikulum, Studio, App Maker &amp; Game Maker
+                    Seluruh Materi Kurikulum, Studio, App, Game &amp; AI-ML
                   </h2>
                   <p className="text-xs sm:text-sm font-semibold text-neutral-900 max-w-2xl leading-relaxed">
-                    Tinjau seluruh materi, misi, petunjuk karakter (Panda, Beruang, Koala), pratinjau sertifikat, dan uji langsung
-                    Coding Studio (L1–L9), 5 proyek App Maker, maupun 5 game interaktif Game Maker tanpa terkunci.
+                    Tinjau seluruh materi, misi, karakter, pratinjau sertifikat, dan uji langsung
+                    Coding Studio (L1–L9), App Maker (5 proyek), Game Maker (5 game), maupun AI-ML Vision (Cartoonizer &amp; Face Detection).
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2 shrink-0">
                   <button
                     type="button"
                     onClick={() => openLevelInPreviewStudio(previewLevelId)}
-                    className="neo-btn bg-black text-white px-4 py-3 text-xs sm:text-sm font-extrabold inline-flex items-center justify-center gap-2 cursor-pointer"
+                    className="neo-btn bg-black text-white px-3.5 py-2.5 text-xs font-extrabold inline-flex items-center justify-center gap-1.5 cursor-pointer"
                   >
-                    <Play className="w-4 h-4 fill-white" />
-                    Coding Studio (L{previewLevel.order})
+                    <Play className="w-3.5 h-3.5 fill-white" />
+                    Studio (L{previewLevel.order})
                   </button>
                   <button
                     type="button"
                     onClick={() => openAppMakerInPreview(null)}
-                    className="neo-btn bg-[#C084FC] px-4 py-3 text-xs sm:text-sm font-extrabold inline-flex items-center justify-center gap-2 cursor-pointer"
+                    className="neo-btn bg-[#C084FC] px-3.5 py-2.5 text-xs font-extrabold inline-flex items-center justify-center gap-1.5 cursor-pointer"
                   >
-                    <Layers className="w-4 h-4" />
-                    App Maker (5 Proyek)
+                    <Layers className="w-3.5 h-3.5" />
+                    App Maker (5)
                   </button>
                   <button
                     type="button"
                     onClick={() => openGameMakerInPreview(null)}
-                    className="neo-btn bg-[#38BDF8] px-4 py-3 text-xs sm:text-sm font-extrabold inline-flex items-center justify-center gap-2 cursor-pointer"
+                    className="neo-btn bg-[#38BDF8] px-3.5 py-2.5 text-xs font-extrabold inline-flex items-center justify-center gap-1.5 cursor-pointer"
                   >
-                    <Gamepad2 className="w-4 h-4" />
-                    Game Maker (5 Game)
+                    <Gamepad2 className="w-3.5 h-3.5" />
+                    Game Maker (5)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => openAiMlInPreview(null)}
+                    className="neo-btn bg-[#FDBA74] px-3.5 py-2.5 text-xs font-extrabold inline-flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <Cpu className="w-3.5 h-3.5" />
+                    AI-ML (2)
                   </button>
                 </div>
               </div>
+
+              {/* AI-ML 2 Projects Preview Section */}
+              <section className="space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-3 pb-2 border-b-[3px] border-black">
+                  <div>
+                    <h3 className="font-display text-xl sm:text-2xl font-extrabold flex items-center gap-2">
+                      <Cpu className="w-5 h-5 shrink-0" />
+                      Program Panduan AI-ML Vision (2 Proyek — Semua Terbuka)
+                    </h3>
+                    <p className="text-xs sm:text-sm text-neutral-700 mt-0.5">
+                      Cartoonizer AI &amp; Face Detection AI dengan sampel, unggah foto, dan kamera realtime. Di siswa dibuka bertahap jika akses aktif.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => openSampleCertificate('ai_ml')}
+                    className="neo-btn bg-[#FFE600] px-3.5 py-2 text-xs font-extrabold inline-flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Award className="w-4 h-4" />
+                    Pratinjau Sertifikat AI-ML
+                  </button>
+                </div>
+
+                <div className="grid sm:grid-cols-2 gap-4">
+                  {AI_ML_PROJECTS.map((proj) => (
+                    <div
+                      key={proj.id}
+                      className="neo-card bg-white p-5 flex flex-col justify-between gap-3"
+                    >
+                      <div className="space-y-2">
+                        <span
+                          className="inline-block px-2 py-0.5 border-2 border-black font-mono text-[11px] font-extrabold"
+                          style={{ backgroundColor: proj.accentColor }}
+                        >
+                          {proj.badge} · Terbuka
+                        </span>
+                        <h4 className="font-display text-lg font-extrabold leading-tight">
+                          {proj.title}
+                        </h4>
+                        <p className="text-xs text-neutral-700 leading-relaxed">
+                          {proj.subtitle}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => openAiMlInPreview(proj.id)}
+                        className="neo-btn bg-[#FDBA74] w-full py-2 px-3 text-xs font-extrabold inline-flex items-center justify-center gap-1.5 cursor-pointer"
+                      >
+                        <Play className="w-3.5 h-3.5 fill-black" />
+                        Uji Lab {proj.title}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </section>
 
               {/* App Maker 5 Projects Preview Section */}
               <section className="space-y-4">

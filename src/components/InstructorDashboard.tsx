@@ -20,6 +20,7 @@ import {
   BookOpen,
   Layers,
   Gamepad2,
+  Cpu,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -33,12 +34,14 @@ import {
 import type { AppSession, CertificateRecord, DataStoreSnapshot, TierId } from '../types';
 import {
   dataEngine,
+  hasStudentAiMlAccess,
   hasStudentAppMakerAccess,
   hasStudentGameMakerAccess,
 } from '../services/dataEngine';
 import { LEVELS } from '../data/levels';
 import { APP_MAKER_PROJECTS } from '../data/appMakerProjects';
 import { GAME_MAKER_PROJECTS } from '../data/gameMakerProjects';
+import { AI_ML_PROJECTS } from '../data/aiMlProjects';
 import { formatShortDate, generateAccessCode } from '../utils/crypto';
 import { CertificateView } from './CertificateView';
 import { ModuleGuideModal } from './ModuleGuideModal';
@@ -60,6 +63,7 @@ export const InstructorDashboard: React.FC<Props> = ({ session, store, onLogout 
   const [customCode, setCustomCode] = useState(() => generateAccessCode('CODE'));
   const [includeAppMaker, setIncludeAppMaker] = useState(false);
   const [includeGameMaker, setIncludeGameMaker] = useState(false);
+  const [includeAiMl, setIncludeAiMl] = useState(false);
   const [creating, setCreating] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [formSuccess, setFormSuccess] = useState<string | null>(null);
@@ -123,10 +127,12 @@ export const InstructorDashboard: React.FC<Props> = ({ session, store, onLogout 
         createdByName: session.name,
         includeAppMaker,
         includeGameMaker,
+        includeAiMl,
       });
       const extraTags = [
         created.includeAppMaker ? '+ App Maker' : null,
         created.includeGameMaker ? '+ Game Maker' : null,
+        created.includeAiMl ? '+ AI-ML' : null,
       ].filter(Boolean);
       setFormSuccess(
         `Kode akses "${created.code}" untuk kelas "${created.className}"${extraTags.length > 0 ? ` (${extraTags.join(' ')})` : ''} berhasil dibuat!`
@@ -134,6 +140,7 @@ export const InstructorDashboard: React.FC<Props> = ({ session, store, onLogout 
       setClassName('');
       setIncludeAppMaker(false);
       setIncludeGameMaker(false);
+      setIncludeAiMl(false);
       setCustomCode(generateAccessCode('CODE'));
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'Gagal membuat kode akses.');
@@ -508,6 +515,33 @@ export const InstructorDashboard: React.FC<Props> = ({ session, store, onLogout 
                 </button>
 
                 <button
+                  type="button"
+                  onClick={() => setIncludeAiMl((v) => !v)}
+                  className={`w-full p-3 border-2 border-black text-left flex items-start gap-2.5 cursor-pointer ${
+                    includeAiMl
+                      ? 'bg-[#FDBA74]/35 shadow-[2px_2px_0px_0px_#000]'
+                      : 'bg-white'
+                  }`}
+                >
+                  <span
+                    className={`w-5 h-5 mt-0.5 border-2 border-black flex items-center justify-center shrink-0 ${
+                      includeAiMl ? 'bg-[#FDBA74]' : 'bg-white'
+                    }`}
+                  >
+                    {includeAiMl && <Check className="w-3.5 h-3.5 stroke-[3]" />}
+                  </span>
+                  <div className="min-w-0">
+                    <div className="text-xs font-extrabold flex items-center gap-1.5">
+                      <Cpu className="w-3.5 h-3.5" />
+                      Sertakan Akses Program AI-ML (2 Proyek Vision)
+                    </div>
+                    <p className="text-[11px] text-neutral-600 mt-0.5">
+                      Siswa yang memakai kode ini otomatis mendapat akses Cartoonizer AI &amp; Face Detection AI.
+                    </p>
+                  </div>
+                </button>
+
+                <button
                   type="submit"
                   disabled={creating}
                   className="neo-btn bg-[#4ADE80] w-full py-3 text-sm font-extrabold inline-flex items-center justify-center gap-2 cursor-pointer"
@@ -553,6 +587,11 @@ export const InstructorDashboard: React.FC<Props> = ({ session, store, onLogout 
                               {item.includeGameMaker && (
                                 <span className="text-xs font-extrabold px-2 py-0.5 border border-black bg-[#38BDF8]">
                                   + Game Maker
+                                </span>
+                              )}
+                              {item.includeAiMl && (
+                                <span className="text-xs font-extrabold px-2 py-0.5 border border-black bg-[#FDBA74]">
+                                  + AI-ML
                                 </span>
                               )}
                             </div>
@@ -633,15 +672,20 @@ export const InstructorDashboard: React.FC<Props> = ({ session, store, onLogout 
                       {myStudents.map((stu) => {
                         const stuAllProg = myProgress.filter((p) => p.studentId === stu.id);
                         const stuProg = stuAllProg.filter(
-                          (p) => p.tier !== 'app_maker' && p.tier !== 'game_maker'
+                          (p) =>
+                            p.tier !== 'app_maker' &&
+                            p.tier !== 'game_maker' &&
+                            p.tier !== 'ai_ml'
                         );
                         const stuAppProg = stuAllProg.filter((p) => p.tier === 'app_maker');
                         const stuGameProg = stuAllProg.filter((p) => p.tier === 'game_maker');
+                        const stuAiMlProg = stuAllProg.filter((p) => p.tier === 'ai_ml');
                         const stuStars = stuProg.reduce((a, b) => a + b.stars, 0);
                         const stuCerts = myCertificates.filter((c) => c.studentId === stu.id);
                         const pct = Math.round((stuProg.length / LEVELS.length) * 100);
                         const hasApp = hasStudentAppMakerAccess(stu, store.accessCodes);
                         const hasGame = hasStudentGameMakerAccess(stu, store.accessCodes);
+                        const hasAiMl = hasStudentAiMlAccess(stu, store.accessCodes);
 
                         return (
                           <tr key={stu.id} className="bg-white hover:bg-[#FFFDF7]">
@@ -661,6 +705,11 @@ export const InstructorDashboard: React.FC<Props> = ({ session, store, onLogout 
                                 {hasGame && (
                                   <span className="px-1.5 py-0.5 bg-[#38BDF8] border border-black text-[10px] font-extrabold">
                                     Game Maker {stuGameProg.length}/{GAME_MAKER_PROJECTS.length}
+                                  </span>
+                                )}
+                                {hasAiMl && (
+                                  <span className="px-1.5 py-0.5 bg-[#FDBA74] border border-black text-[10px] font-extrabold">
+                                    AI-ML {stuAiMlProg.length}/{AI_ML_PROJECTS.length}
                                   </span>
                                 )}
                               </div>
@@ -697,7 +746,9 @@ export const InstructorDashboard: React.FC<Props> = ({ session, store, onLogout 
                                           ? 'bg-[#FB7185]'
                                           : c.tierId === 'game_maker'
                                             ? 'bg-[#38BDF8]'
-                                            : 'bg-[#C084FC]'
+                                            : c.tierId === 'ai_ml'
+                                              ? 'bg-[#FDBA74]'
+                                              : 'bg-[#C084FC]'
                                       }`}
                                     >
                                       <Eye className="w-3 h-3" />
@@ -705,7 +756,9 @@ export const InstructorDashboard: React.FC<Props> = ({ session, store, onLogout 
                                         ? 'App Maker'
                                         : c.tierId === 'game_maker'
                                           ? 'Game Maker'
-                                          : c.tierId}
+                                          : c.tierId === 'ai_ml'
+                                            ? 'AI-ML'
+                                            : c.tierId}
                                     </button>
                                   ))}
                                 </div>

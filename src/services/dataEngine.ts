@@ -23,6 +23,7 @@ import { auth, db, handleFirestoreError, OperationType, testConnection } from '.
 import { firebaseConfig, isFirebaseConfigured } from '../firebaseConfig.js';
 import type {
   AccessCode,
+  AiMlProjectId,
   AppMakerProjectId,
   AppSettings,
   CertificateRecord,
@@ -44,6 +45,7 @@ import {
 import { getLevelsByTier, getTierMeta } from '../data/levels';
 import { APP_MAKER_PROJECTS } from '../data/appMakerProjects';
 import { GAME_MAKER_PROJECTS } from '../data/gameMakerProjects';
+import { AI_ML_PROJECTS } from '../data/aiMlProjects';
 
 const LOCAL_STORAGE_KEY = 'codespark_realtime_db_v1';
 const CHANNEL_NAME = 'codespark_realtime_sync';
@@ -94,6 +96,20 @@ export function hasStudentGameMakerAccess(student: Student, accessCodes: AccessC
   return Boolean(found?.includeGameMaker);
 }
 
+/**
+ * Determines whether a student currently has access to the AI-ML guided project program.
+ * Priority: explicit admin toggle on student record -> fallback to access code setting.
+ */
+export function hasStudentAiMlAccess(student: Student, accessCodes: AccessCode[]): boolean {
+  if (typeof student.hasAiMlAccess === 'boolean') {
+    if (student.hasAiMlAccess) return true;
+    return false;
+  }
+  const upper = (student.accessCode || '').trim().toUpperCase();
+  const found = accessCodes.find((c) => c.code.toUpperCase() === upper);
+  return Boolean(found?.includeAiMl);
+}
+
 interface LocalDatabase {
   instructors: Instructor[];
   accessCodes: AccessCode[];
@@ -120,6 +136,7 @@ function createInitialLocalDb(): LocalDatabase {
         isTrial: true,
         includeAppMaker: false,
         includeGameMaker: false,
+        includeAiMl: false,
         createdAt: now,
       },
     ],
@@ -148,6 +165,7 @@ function readLocalDb(): LocalDatabase {
               c.code.toUpperCase().startsWith('BELAJAR')),
           includeAppMaker: Boolean(c.includeAppMaker),
           includeGameMaker: Boolean(c.includeGameMaker),
+          includeAiMl: Boolean(c.includeAiMl),
         }))
       : [];
     if (accessCodes.length === 0) {
@@ -224,6 +242,7 @@ function mapAccessCodeDoc(d: QueryDocumentSnapshot<DocumentData>): AccessCode {
         : codeStr.toUpperCase().startsWith('BELAJAR'),
     includeAppMaker: Boolean(data.includeAppMaker),
     includeGameMaker: Boolean(data.includeGameMaker),
+    includeAiMl: Boolean(data.includeAiMl),
     createdAt: timestampToIso(data.createdAt),
   };
 }
@@ -247,6 +266,9 @@ function mapStudentDoc(d: QueryDocumentSnapshot<DocumentData>): Student {
     hasGameMakerAccess:
       typeof data.hasGameMakerAccess === 'boolean' ? data.hasGameMakerAccess : undefined,
     requestedGameMaker: Boolean(data.requestedGameMaker),
+    hasAiMlAccess:
+      typeof data.hasAiMlAccess === 'boolean' ? data.hasAiMlAccess : undefined,
+    requestedAiMl: Boolean(data.requestedAiMl),
     createdAt: timestampToIso(data.createdAt),
   };
 }
@@ -546,6 +568,7 @@ class CodeSparkDataEngine {
           isTrial: true,
           includeAppMaker: false,
           includeGameMaker: false,
+          includeAiMl: false,
           createdAt: serverTimestamp(),
         });
       }
@@ -1018,6 +1041,7 @@ class CodeSparkDataEngine {
     isTrial?: boolean;
     includeAppMaker?: boolean;
     includeGameMaker?: boolean;
+    includeAiMl?: boolean;
   }): Promise<AccessCode> {
     const code = clampString(input.code, 32)
       .toUpperCase()
@@ -1036,6 +1060,7 @@ class CodeSparkDataEngine {
     const isTrial = input.isTrial ?? code.startsWith('BELAJAR');
     const includeAppMaker = Boolean(input.includeAppMaker);
     const includeGameMaker = Boolean(input.includeGameMaker);
+    const includeAiMl = Boolean(input.includeAiMl);
 
     const record: AccessCode = {
       id: code,
@@ -1049,6 +1074,7 @@ class CodeSparkDataEngine {
       isTrial,
       includeAppMaker,
       includeGameMaker,
+      includeAiMl,
       createdAt: now,
     };
 
@@ -1066,6 +1092,7 @@ class CodeSparkDataEngine {
           isTrial,
           includeAppMaker,
           includeGameMaker,
+          includeAiMl,
           createdAt: serverTimestamp(),
         });
       } catch (error) {
@@ -1130,6 +1157,23 @@ class CodeSparkDataEngine {
     }
   }
 
+  public async toggleAccessCodeAiMl(codeId: string, includeAiMl: boolean): Promise<void> {
+    if (this.snapshot.mode === 'firebase' && db) {
+      try {
+        await updateDoc(doc(db, 'access_codes', codeId), { includeAiMl });
+      } catch (error) {
+        handleFirestoreError(error, OperationType.UPDATE, `access_codes/${codeId}`);
+      }
+    } else {
+      this.writeLocalDb((state) => ({
+        ...state,
+        accessCodes: state.accessCodes.map((c) =>
+          c.id === codeId ? { ...c, includeAiMl } : c
+        ),
+      }));
+    }
+  }
+
   public async deleteAccessCode(codeId: string): Promise<void> {
     if (this.snapshot.mode === 'firebase' && db) {
       try {
@@ -1170,6 +1214,7 @@ class CodeSparkDataEngine {
               : codeStr.toUpperCase().startsWith('BELAJAR'),
           includeAppMaker: Boolean(data.includeAppMaker),
           includeGameMaker: Boolean(data.includeGameMaker),
+          includeAiMl: Boolean(data.includeAiMl),
           createdAt: timestampToIso(data.createdAt),
         };
       } catch (error) {
@@ -1189,6 +1234,7 @@ class CodeSparkDataEngine {
     accessCode: string;
     requestedAppMaker?: boolean;
     requestedGameMaker?: boolean;
+    requestedAiMl?: boolean;
   }): Promise<Student> {
     const name = clampString(input.name, 100);
     const username = clampString(input.username, 50).toLowerCase();
@@ -1222,6 +1268,8 @@ class CodeSparkDataEngine {
     const requestedAppMaker = Boolean(input.requestedAppMaker);
     const hasGameMakerAccess = Boolean(matchedCode.includeGameMaker);
     const requestedGameMaker = Boolean(input.requestedGameMaker);
+    const hasAiMlAccess = Boolean(matchedCode.includeAiMl);
+    const requestedAiMl = Boolean(input.requestedAiMl);
 
     const record: Student = {
       id,
@@ -1238,6 +1286,8 @@ class CodeSparkDataEngine {
       requestedAppMaker,
       hasGameMakerAccess,
       requestedGameMaker,
+      hasAiMlAccess,
+      requestedAiMl,
       createdAt: now,
     };
 
@@ -1258,6 +1308,8 @@ class CodeSparkDataEngine {
           requestedAppMaker,
           hasGameMakerAccess,
           requestedGameMaker,
+          hasAiMlAccess,
+          requestedAiMl,
           createdAt: serverTimestamp(),
         });
       } catch (error) {
@@ -1277,7 +1329,7 @@ class CodeSparkDataEngine {
     const codeStr = clampString(rawCode, 32).toUpperCase();
     const matchedCode = await this.lookupAccessCode(codeStr);
     if (!matchedCode) {
-      throw new Error(`Kode Akses "${codeStr}" tidak ditemukan! Minta kode kelas penuh, App Maker, atau Game Maker dari Admin.`);
+      throw new Error(`Kode Akses "${codeStr}" tidak ditemukan! Minta kode kelas penuh, App Maker, Game Maker, atau AI-ML dari Admin.`);
     }
     if (!matchedCode.isActive) {
       throw new Error(`Kode Akses "${codeStr}" sedang nonaktif.`);
@@ -1285,9 +1337,10 @@ class CodeSparkDataEngine {
     if (
       (matchedCode.isTrial || codeStr.startsWith('BELAJAR')) &&
       !matchedCode.includeAppMaker &&
-      !matchedCode.includeGameMaker
+      !matchedCode.includeGameMaker &&
+      !matchedCode.includeAiMl
     ) {
-      throw new Error(`Kode "${codeStr}" adalah kode uji coba (Level 1 saja). Masukkan Kode Akses Kelas Penuh / App Maker / Game Maker dari Admin.`);
+      throw new Error(`Kode "${codeStr}" adalah kode uji coba (Level 1 saja). Masukkan Kode Akses Kelas Penuh / App Maker / Game Maker / AI-ML dari Admin.`);
     }
 
     const existing = this.snapshot.students.find((s) => s.id === studentId);
@@ -1295,6 +1348,7 @@ class CodeSparkDataEngine {
 
     const nextAppMakerAccess = Boolean(matchedCode.includeAppMaker || existing.hasAppMakerAccess);
     const nextGameMakerAccess = Boolean(matchedCode.includeGameMaker || existing.hasGameMakerAccess);
+    const nextAiMlAccess = Boolean(matchedCode.includeAiMl || existing.hasAiMlAccess);
 
     const updated: Student = {
       ...existing,
@@ -1305,6 +1359,7 @@ class CodeSparkDataEngine {
       instructorUid: matchedCode.ownerUid,
       hasAppMakerAccess: nextAppMakerAccess,
       hasGameMakerAccess: nextGameMakerAccess,
+      hasAiMlAccess: nextAiMlAccess,
     };
 
     if (this.snapshot.mode === 'firebase' && db) {
@@ -1317,6 +1372,7 @@ class CodeSparkDataEngine {
           instructorUid: matchedCode.ownerUid,
           hasAppMakerAccess: nextAppMakerAccess,
           hasGameMakerAccess: nextGameMakerAccess,
+          hasAiMlAccess: nextAiMlAccess,
         });
       } catch (error) {
         handleFirestoreError(error, OperationType.UPDATE, `students/${studentId}`);
@@ -1364,6 +1420,25 @@ class CodeSparkDataEngine {
         ...state,
         students: state.students.map((s) =>
           s.id === studentId ? { ...s, hasGameMakerAccess: enabled } : s
+        ),
+      }));
+    }
+  }
+
+  public async setStudentAiMlAccess(studentId: string, enabled: boolean): Promise<void> {
+    if (this.snapshot.mode === 'firebase' && db) {
+      try {
+        await updateDoc(doc(db, 'students', studentId), {
+          hasAiMlAccess: enabled,
+        });
+      } catch (error) {
+        handleFirestoreError(error, OperationType.UPDATE, `students/${studentId}`);
+      }
+    } else {
+      this.writeLocalDb((state) => ({
+        ...state,
+        students: state.students.map((s) =>
+          s.id === studentId ? { ...s, hasAiMlAccess: enabled } : s
         ),
       }));
     }
@@ -1776,6 +1851,132 @@ class CodeSparkDataEngine {
               studentId: input.student.id,
               studentName: input.student.name,
               tierId: 'game_maker',
+              tierName: certTitle,
+              instructorName: input.student.instructorName,
+              instructorUid: input.student.instructorUid,
+              ownerUid,
+              issuedAt: serverTimestamp(),
+            });
+          } catch (error) {
+            handleFirestoreError(error, OperationType.CREATE, `certificates/${certId}`);
+          }
+        } else {
+          this.writeLocalDb((state) => ({
+            ...state,
+            certificates: [certRecord, ...state.certificates],
+          }));
+        }
+        newCertificate = certRecord;
+      }
+    }
+
+    return { progress: record, newCertificate };
+  }
+
+  public async saveAiMlProgress(input: {
+    student: Student;
+    projectId: AiMlProjectId;
+    stars: 1 | 2 | 3;
+    codeSubmitted: string;
+  }): Promise<{ progress: ProgressRecord; newCertificate: CertificateRecord | null }> {
+    const progressId = `${input.student.id}_${input.projectId}`;
+    const existing = this.snapshot.progress.find((p) => p.id === progressId);
+    const bestStars = (existing ? Math.max(existing.stars, input.stars) : input.stars) as 1 | 2 | 3;
+    const trimmedCode = clampString(input.codeSubmitted, 4000) || 'vision.run();';
+    const ownerUid =
+      this.snapshot.mode === 'firebase' && auth?.currentUser ? auth.currentUser.uid : input.student.ownerUid;
+    const now = new Date().toISOString();
+
+    const record: ProgressRecord = {
+      id: progressId,
+      studentId: input.student.id,
+      levelId: input.projectId,
+      tier: 'ai_ml',
+      stars: bestStars,
+      codeSubmitted: trimmedCode,
+      language: 'javascript',
+      ownerUid,
+      instructorUid: input.student.instructorUid,
+      completedAt: now,
+    };
+
+    if (this.snapshot.mode === 'firebase' && db) {
+      try {
+        if (existing) {
+          await updateDoc(doc(db, 'progress', progressId), {
+            stars: bestStars,
+            codeSubmitted: trimmedCode,
+            language: 'javascript',
+            completedAt: serverTimestamp(),
+          });
+        } else {
+          await setDoc(doc(db, 'progress', progressId), {
+            id: progressId,
+            studentId: input.student.id,
+            levelId: input.projectId,
+            tier: 'ai_ml',
+            stars: bestStars,
+            codeSubmitted: trimmedCode,
+            language: 'javascript',
+            ownerUid,
+            instructorUid: input.student.instructorUid,
+            completedAt: serverTimestamp(),
+          });
+        }
+      } catch (error) {
+        handleFirestoreError(
+          error,
+          existing ? OperationType.UPDATE : OperationType.CREATE,
+          `progress/${progressId}`
+        );
+      }
+    } else {
+      this.writeLocalDb((state) => {
+        const others = state.progress.filter((p) => p.id !== progressId);
+        return {
+          ...state,
+          progress: [record, ...others],
+        };
+      });
+    }
+
+    const completedAiMlIds = new Set(
+      this.snapshot.progress
+        .filter((p) => p.studentId === input.student.id && p.tier === 'ai_ml')
+        .map((p) => p.levelId)
+    );
+    completedAiMlIds.add(input.projectId);
+
+    const allAiMlDone = AI_ML_PROJECTS.every((proj) => completedAiMlIds.has(proj.id));
+    let newCertificate: CertificateRecord | null = null;
+
+    if (allAiMlDone) {
+      const certId = `${input.student.id}_ai_ml`;
+      const existingCert = this.snapshot.certificates.find((c) => c.id === certId);
+      if (!existingCert) {
+        const certNo = generateCertificateNo('ai_ml');
+        const certTitle = 'AI-ML: Cartoonizer & Face Detection';
+        const certRecord: CertificateRecord = {
+          id: certId,
+          certificateNo: certNo,
+          studentId: input.student.id,
+          studentName: input.student.name,
+          tierId: 'ai_ml',
+          tierName: certTitle,
+          instructorName: input.student.instructorName,
+          instructorUid: input.student.instructorUid,
+          ownerUid,
+          issuedAt: now,
+        };
+
+        if (this.snapshot.mode === 'firebase' && db) {
+          try {
+            await setDoc(doc(db, 'certificates', certId), {
+              id: certId,
+              certificateNo: certNo,
+              studentId: input.student.id,
+              studentName: input.student.name,
+              tierId: 'ai_ml',
               tierName: certTitle,
               instructorName: input.student.instructorName,
               instructorUid: input.student.instructorUid,

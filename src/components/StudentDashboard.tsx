@@ -23,8 +23,10 @@ import {
   AlertCircle,
   Layers,
   Gamepad2,
+  Cpu,
 } from 'lucide-react';
 import type {
+  AiMlProjectId,
   AppMakerProjectId,
   AppSession,
   CertificateRecord,
@@ -37,8 +39,10 @@ import type {
 import { LEVELS, TIERS, getLevelById, getLevelsByTier, getTierMeta } from '../data/levels';
 import { APP_MAKER_PROJECTS } from '../data/appMakerProjects';
 import { GAME_MAKER_PROJECTS } from '../data/gameMakerProjects';
+import { AI_ML_PROJECTS } from '../data/aiMlProjects';
 import {
   dataEngine,
+  hasStudentAiMlAccess,
   hasStudentAppMakerAccess,
   hasStudentGameMakerAccess,
   isTrialAccessCode,
@@ -47,6 +51,7 @@ import { soundEngine } from '../engine/soundEngine';
 import { CodingStudio } from './CodingStudio';
 import { AppMakerWorkspace } from './AppMakerWorkspace';
 import { GameMakerWorkspace } from './GameMakerWorkspace';
+import { AiMlWorkspace } from './AiMlWorkspace';
 import { CertificateView } from './CertificateView';
 import { ModuleGuideModal } from './ModuleGuideModal';
 import { CHARACTER_META, MascotPortrait, getCharacterForLevel } from './PandaMascot';
@@ -59,7 +64,7 @@ interface Props {
   onUpdateSession?: (nextSession: AppSession) => void;
 }
 
-type StudentTab = 'studio' | 'map' | 'app_maker' | 'game_maker' | 'certificates';
+type StudentTab = 'studio' | 'map' | 'app_maker' | 'game_maker' | 'ai_ml' | 'certificates';
 
 export const StudentDashboard: React.FC<Props> = ({
   session,
@@ -98,18 +103,22 @@ export const StudentDashboard: React.FC<Props> = ({
     requestedAppMaker: session.requestedAppMaker,
     hasGameMakerAccess: session.hasGameMakerAccess,
     requestedGameMaker: session.requestedGameMaker,
+    hasAiMlAccess: session.hasAiMlAccess,
+    requestedAiMl: session.requestedAiMl,
     createdAt: new Date().toISOString(),
   };
 
   const myAllProgress = store.progress.filter((p) => p.studentId === studentRecord.id);
   const myProgress = myAllProgress.filter(
-    (p) => p.tier !== 'app_maker' && p.tier !== 'game_maker'
+    (p) => p.tier !== 'app_maker' && p.tier !== 'game_maker' && p.tier !== 'ai_ml'
   );
   const myAppMakerProgress = myAllProgress.filter((p) => p.tier === 'app_maker');
   const myGameMakerProgress = myAllProgress.filter((p) => p.tier === 'game_maker');
+  const myAiMlProgress = myAllProgress.filter((p) => p.tier === 'ai_ml');
   const progressByLevel = new Map(myProgress.map((p) => [p.levelId, p]));
   const appMakerProgressMap = new Map(myAppMakerProgress.map((p) => [p.levelId, p]));
   const gameMakerProgressMap = new Map(myGameMakerProgress.map((p) => [p.levelId, p]));
+  const aiMlProgressMap = new Map(myAiMlProgress.map((p) => [p.levelId, p]));
   const myCertificates = store.certificates.filter((c) => c.studentId === studentRecord.id);
 
   const totalStars = myProgress.reduce((acc, p) => acc + p.stars, 0);
@@ -120,6 +129,7 @@ export const StudentDashboard: React.FC<Props> = ({
   const isTrialStudent = isTrialAccessCode(studentRecord.accessCode, store.accessCodes);
   const hasAppMaker = hasStudentAppMakerAccess(studentRecord, store.accessCodes);
   const hasGameMaker = hasStudentGameMakerAccess(studentRecord, store.accessCodes);
+  const hasAiMl = hasStudentAiMlAccess(studentRecord, store.accessCodes);
 
   const isLevelUnlocked = (order: number): boolean => {
     if (order === 1) return true;
@@ -168,10 +178,12 @@ export const StudentDashboard: React.FC<Props> = ({
         instructorUid: updated.instructorUid,
         hasAppMakerAccess: updated.hasAppMakerAccess,
         hasGameMakerAccess: updated.hasGameMakerAccess,
+        hasAiMlAccess: updated.hasAiMlAccess,
       });
       const unlockedExtras = [
         updated.hasAppMakerAccess ? 'Program App Maker (5 Proyek)' : null,
         updated.hasGameMakerAccess ? 'Program Game Maker (5 Game)' : null,
+        updated.hasAiMlAccess ? 'Program AI-ML (2 Proyek)' : null,
       ].filter(Boolean);
       setUpgradeSuccess(
         `Berhasil! Akun Anda kini tergabung di "${updated.className}" (${updated.accessCode}). ${
@@ -233,6 +245,18 @@ export const StudentDashboard: React.FC<Props> = ({
     return { newCertificate: res.newCertificate };
   };
 
+  const handleAiMlComplete = async (payload: {
+    projectId: AiMlProjectId;
+    stars: 1 | 2 | 3;
+    codeSubmitted: string;
+  }) => {
+    const res = await dataEngine.saveAiMlProgress({
+      student: studentRecord,
+      ...payload,
+    });
+    return { newCertificate: res.newCertificate };
+  };
+
   const toggleSound = () => {
     const next = !sfxOn;
     setSfxOn(next);
@@ -241,22 +265,29 @@ export const StudentDashboard: React.FC<Props> = ({
 
   const navItems: { id: StudentTab; label: string; icon: typeof MapIcon }[] = [
     { id: 'studio', label: 'Studio', icon: Code2 },
-    { id: 'map', label: 'Peta Level', icon: MapIcon },
+    { id: 'map', label: 'Peta', icon: MapIcon },
     {
       id: 'app_maker',
       label: hasAppMaker
         ? `App (${myAppMakerProgress.length}/${APP_MAKER_PROJECTS.length})`
-        : 'App Maker 🔒',
+        : 'App 🔒',
       icon: Layers,
     },
     {
       id: 'game_maker',
       label: hasGameMaker
         ? `Game (${myGameMakerProgress.length}/${GAME_MAKER_PROJECTS.length})`
-        : 'Game Maker 🔒',
+        : 'Game 🔒',
       icon: Gamepad2,
     },
-    { id: 'certificates', label: `Sertifikat (${myCertificates.length})`, icon: Award },
+    {
+      id: 'ai_ml',
+      label: hasAiMl
+        ? `AI-ML (${myAiMlProgress.length}/${AI_ML_PROJECTS.length})`
+        : 'AI-ML 🔒',
+      icon: Cpu,
+    },
+    { id: 'certificates', label: `Sertif (${myCertificates.length})`, icon: Award },
   ];
 
   const isStudioMode = activeTab === 'studio';
@@ -379,6 +410,26 @@ export const StudentDashboard: React.FC<Props> = ({
               {hasGameMaker ? <Gamepad2 className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}
               <span>
                 Game Maker{hasGameMaker ? ` (${myGameMakerProgress.length}/${GAME_MAKER_PROJECTS.length})` : ''}
+              </span>
+            </button>
+
+            {/* AI-ML Switch Button */}
+            <button
+              type="button"
+              onClick={() => {
+                soundEngine.playButtonClick();
+                setActiveTab(activeTab === 'ai_ml' ? 'studio' : 'ai_ml');
+              }}
+              className={`hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-extrabold border cursor-pointer ${
+                activeTab === 'ai_ml'
+                  ? 'bg-[#FDBA74] text-black border-black'
+                  : 'bg-[#3A414E] text-white border-white/15 hover:bg-[#485060]'
+              }`}
+              title="Program Panduan AI-ML (Cartoonizer & Face Detection)"
+            >
+              {hasAiMl ? <Cpu className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}
+              <span>
+                AI-ML{hasAiMl ? ` (${myAiMlProgress.length}/${AI_ML_PROJECTS.length})` : ''}
               </span>
             </button>
 
@@ -761,6 +812,23 @@ export const StudentDashboard: React.FC<Props> = ({
           />
         )}
 
+        {activeTab === 'ai_ml' && (
+          <AiMlWorkspace
+            hasAccess={hasAiMl}
+            requestedAiMl={studentRecord.requestedAiMl}
+            completedProgressMap={aiMlProgressMap}
+            adminPhone={store.settings.adminPhone}
+            adminContactName={store.settings.adminContactName}
+            onRequestUpgrade={() => {
+              setUpgradeError(null);
+              setUpgradeSuccess(null);
+              setUpgradeModalOpen(true);
+            }}
+            onProjectComplete={handleAiMlComplete}
+            onOpenCertificates={() => setActiveTab('certificates')}
+          />
+        )}
+
         {activeTab === 'certificates' && (
           <main className="max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 space-y-6 text-black">
             <div className="flex flex-wrap items-center justify-between gap-4">
@@ -811,7 +879,9 @@ export const StudentDashboard: React.FC<Props> = ({
                       ? { name: 'Program App Maker', accentColor: '#FB7185' }
                       : cert.tierId === 'game_maker'
                         ? { name: 'Program Game Maker', accentColor: '#38BDF8' }
-                        : TIERS.find((t) => t.id === cert.tierId) || TIERS[0];
+                        : cert.tierId === 'ai_ml'
+                          ? { name: 'Program AI-ML Vision', accentColor: '#FDBA74' }
+                          : TIERS.find((t) => t.id === cert.tierId) || TIERS[0];
                   return (
                     <div key={cert.id} className="neo-card bg-white flex flex-col justify-between">
                       <div>
@@ -858,7 +928,7 @@ export const StudentDashboard: React.FC<Props> = ({
       </div>
 
       {/* Mobile Compact Bottom Nav */}
-      <nav className="no-print lg:hidden fixed bottom-0 inset-x-0 z-30 bg-[#2C313A] text-white border-t-2 border-black grid grid-cols-5 h-14">
+      <nav className="no-print lg:hidden fixed bottom-0 inset-x-0 z-30 bg-[#2C313A] text-white border-t-2 border-black grid grid-cols-6 h-14">
         {navItems.map((item) => {
           const Icon = item.icon;
           const active = activeTab === item.id;
@@ -905,7 +975,7 @@ export const StudentDashboard: React.FC<Props> = ({
                     Aktivasi Kode Akses / Program Panduan
                   </h2>
                   <p className="text-xs font-semibold text-neutral-600">
-                    Kode aktif saat ini: {studentRecord.accessCode} · Buka Level 2–9, App Maker &amp; Game Maker
+                    Kode aktif saat ini: {studentRecord.accessCode} · Buka Level 2–9, App Maker, Game Maker &amp; AI-ML
                   </p>
                 </div>
               </div>

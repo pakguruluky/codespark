@@ -12,12 +12,15 @@ interface Props {
 export const CertificateView: React.FC<Props> = ({ certificate, onClose }) => {
   const isAppMaker = certificate.tierId === 'app_maker';
   const isGameMaker = certificate.tierId === 'game_maker';
+  const isAiMl = certificate.tierId === 'ai_ml';
   const accentColor =
     certificate.tierId === 'app_maker'
       ? '#FB7185'
       : certificate.tierId === 'game_maker'
         ? '#38BDF8'
-        : getTierMeta(certificate.tierId).accentColor;
+        : certificate.tierId === 'ai_ml'
+          ? '#FDBA74'
+          : getTierMeta(certificate.tierId).accentColor;
 
   const handlePrint = () => {
     window.print();
@@ -98,7 +101,9 @@ export const CertificateView: React.FC<Props> = ({ certificate, onClose }) => {
                   ? 'Telah berhasil merancang dan membangun seluruh 5 proyek aplikasi interaktif (Photogram AI, Todo App, Simple Calculator, Color Generatif, dan Weather App) pada program panduan:'
                   : isGameMaker
                     ? 'Telah berhasil merancang, memprogram, dan menyelesaikan seluruh 5 proyek game interaktif (Image Match, Memory Card, Color Puzzle, Save the Polar Bear, dan Space Mission) pada program panduan:'
-                    : 'Telah berhasil menyelesaikan seluruh tantangan pemrograman interaktif (Python & JavaScript) serta lulus evaluasi logika algoritma pada kurikulum:'}
+                    : isAiMl
+                      ? 'Telah berhasil merancang dan menguji pipeline Computer Vision & Machine Learning (Cartoonizer AI dan Face Detection AI) secara interaktif pada program panduan:'
+                      : 'Telah berhasil menyelesaikan seluruh tantangan pemrograman interaktif (Python & JavaScript) serta lulus evaluasi logika algoritma pada kurikulum:'}
               </p>
               <div
                 className="inline-block px-6 py-3 border-[3px] border-black shadow-[4px_4px_0px_0px_#000] font-display text-lg sm:text-2xl font-extrabold"
