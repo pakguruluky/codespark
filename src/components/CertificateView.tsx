@@ -98,7 +98,7 @@ export const CertificateView: React.FC<Props> = ({ certificate, onClose }) => {
               </h2>
               <p className="text-sm sm:text-base text-neutral-700 max-w-2xl mx-auto leading-relaxed">
                 {isAppMaker
-                  ? 'Telah berhasil merancang dan membangun seluruh 5 proyek aplikasi interaktif (Photogram AI, Todo App, Simple Calculator, Color Generatif, dan Weather App) pada program panduan:'
+                  ? 'Telah berhasil merancang dan memprogram seluruh 5 proyek mikrokontroler BBC micro:bit v2 (Flashing Heart, Dadu Digital, Piano & Jukebox, Sensor Suhu & Cahaya, dan Radio Telegrap) pada program panduan:'
                   : isGameMaker
                     ? 'Telah berhasil merancang, memprogram, dan menyelesaikan seluruh 5 proyek game interaktif (Image Match, Memory Card, Color Puzzle, Save the Polar Bear, dan Space Mission) pada program panduan:'
                     : isAiMl

@@ -179,7 +179,7 @@ export const AdminDashboard: React.FC<Props> = ({ session, store, onLogout }) =>
   const openSampleCertificate = (tierId: ProgressTierId) => {
     const title =
       tierId === 'app_maker'
-        ? 'App Maker: 5 Proyek Aplikasi Interaktif'
+        ? 'micro:bit Lab: 5 Proyek Hardware Interaktif'
         : tierId === 'game_maker'
           ? 'Game Maker: 5 Proyek Game Interaktif'
           : tierId === 'ai_ml'
@@ -264,7 +264,7 @@ export const AdminDashboard: React.FC<Props> = ({ session, store, onLogout }) =>
     });
     const appProg = store.progress.filter((p) => p.tier === 'app_maker');
     studioRows.push({
-      name: 'App Maker',
+      name: 'micro:bit',
       penyelesaianLevel: appProg.length,
       siswaAktif: new Set(appProg.map((p) => p.studentId)).size,
       sertifikat: store.certificates.filter((c) => c.tierId === 'app_maker').length,
@@ -398,7 +398,7 @@ export const AdminDashboard: React.FC<Props> = ({ session, store, onLogout }) =>
         includeAiMl: codeIncludeAiMl,
       });
       const extraTags = [
-        created.includeAppMaker ? ' + App Maker' : '',
+        created.includeAppMaker ? ' + micro:bit' : '',
         created.includeGameMaker ? ' + Game Maker' : '',
         created.includeAiMl ? ' + AI-ML' : '',
       ].join('');
@@ -1172,10 +1172,10 @@ export const AdminDashboard: React.FC<Props> = ({ session, store, onLogout }) =>
                     <div className="min-w-0">
                       <div className="text-xs font-extrabold flex items-center gap-1.5">
                         <Layers className="w-3.5 h-3.5" />
-                        Sertakan Akses Program App Maker (5 Proyek)
+                        Sertakan Akses Program micro:bit Lab (5 Proyek)
                       </div>
                       <p className="text-[11px] text-neutral-600 mt-0.5">
-                        Siswa yang mendaftar/upgrade memakai kode ini otomatis mendapat akses Photogram AI → Weather App.
+                        Siswa yang mendaftar/upgrade memakai kode ini otomatis mendapat akses Flashing Heart → Radio Telegrap.
                       </p>
                     </div>
                   </button>
@@ -1278,7 +1278,7 @@ export const AdminDashboard: React.FC<Props> = ({ session, store, onLogout }) =>
                             </span>
                             {item.includeAppMaker && (
                               <span className="text-xs font-extrabold px-2 py-0.5 border border-black bg-[#C084FC]">
-                                + App Maker
+                                + micro:bit
                               </span>
                             )}
                             {item.includeGameMaker && (
@@ -1322,10 +1322,10 @@ export const AdminDashboard: React.FC<Props> = ({ session, store, onLogout }) =>
                             className={`neo-btn px-3 py-1.5 text-xs font-extrabold inline-flex items-center gap-1 cursor-pointer ${
                               item.includeAppMaker ? 'bg-[#C084FC]' : 'bg-white'
                             }`}
-                            title="Buka atau tutup akses Program App Maker untuk kode ini"
+                            title="Buka atau tutup akses Program micro:bit Lab untuk kode ini"
                           >
                             <Layers className="w-3.5 h-3.5" />
-                            {item.includeAppMaker ? 'App: ON' : '+ App'}
+                            {item.includeAppMaker ? 'micro:bit: ON' : '+ micro:bit'}
                           </button>
                           <button
                             type="button"
@@ -1490,7 +1490,7 @@ export const AdminDashboard: React.FC<Props> = ({ session, store, onLogout }) =>
                                     ) : (
                                       <Lock className="w-3 h-3" />
                                     )}
-                                    App: {hasAppMaker ? `${stuAppProg.length}/${APP_MAKER_PROJECTS.length}` : 'Terkunci'}
+                                    micro:bit: {hasAppMaker ? `${stuAppProg.length}/${APP_MAKER_PROJECTS.length}` : 'Terkunci'}
                                   </span>
                                   {stu.requestedAppMaker && !hasAppMaker && (
                                     <span className="px-1.5 py-0.5 bg-[#FFE600] border border-black text-[10px] font-extrabold">
@@ -1506,7 +1506,7 @@ export const AdminDashboard: React.FC<Props> = ({ session, store, onLogout }) =>
                                       hasAppMaker ? 'bg-white' : 'bg-[#4ADE80]'
                                     }`}
                                   >
-                                    {hasAppMaker ? 'Kunci App' : 'Buka App'}
+                                    {hasAppMaker ? 'Kunci micro:bit' : 'Buka micro:bit'}
                                   </button>
                                 </div>
 
@@ -1603,7 +1603,7 @@ export const AdminDashboard: React.FC<Props> = ({ session, store, onLogout }) =>
                                     >
                                       <Eye className="w-3 h-3" />
                                       {c.tierId === 'app_maker'
-                                        ? 'App Maker'
+                                        ? 'micro:bit'
                                         : c.tierId === 'game_maker'
                                           ? 'Game Maker'
                                           : c.tierId === 'ai_ml'
@@ -1815,7 +1815,7 @@ export const AdminDashboard: React.FC<Props> = ({ session, store, onLogout }) =>
                     Kembali ke Semua Materi
                   </button>
                   <span className="text-xs font-extrabold px-2.5 py-1 bg-[#FFE600] border-2 border-black">
-                    Pratinjau Admin · Seluruh 5 Proyek App Maker Terbuka
+                    Pratinjau Admin · Seluruh 5 Proyek micro:bit Terbuka
                   </span>
                 </div>
                 <button
@@ -1824,7 +1824,7 @@ export const AdminDashboard: React.FC<Props> = ({ session, store, onLogout }) =>
                   className="neo-btn bg-[#FFE600] px-3.5 py-2 text-xs font-extrabold inline-flex items-center gap-1.5 cursor-pointer"
                 >
                   <Award className="w-4 h-4" />
-                  Pratinjau Sertifikat App Maker
+                  Pratinjau Sertifikat micro:bit
                 </button>
               </div>
 
@@ -1973,14 +1973,14 @@ export const AdminDashboard: React.FC<Props> = ({ session, store, onLogout }) =>
                 <div className="space-y-1.5">
                   <div className="inline-flex items-center gap-1.5 bg-white border-2 border-black px-2.5 py-0.5 text-xs font-extrabold">
                     <Unlock className="w-3.5 h-3.5" />
-                    Akses Penuh Administrator · Studio, App Maker, Game Maker &amp; AI-ML Terbuka
+                    Akses Penuh Administrator · Studio, micro:bit Lab, Game Maker &amp; AI-ML Terbuka
                   </div>
                   <h2 className="font-display text-2xl sm:text-3xl font-extrabold">
-                    Seluruh Materi Kurikulum, Studio, App, Game &amp; AI-ML
+                    Seluruh Materi Kurikulum, Studio, micro:bit, Game &amp; AI-ML
                   </h2>
                   <p className="text-xs sm:text-sm font-semibold text-neutral-900 max-w-2xl leading-relaxed">
                     Tinjau seluruh materi, misi, karakter, pratinjau sertifikat, dan uji langsung
-                    Coding Studio (L1–L9), App Maker (5 proyek), Game Maker (5 game), maupun AI-ML Vision (Cartoonizer &amp; Face Detection).
+                    Coding Studio (L1–L9), micro:bit Lab (5 proyek), Game Maker (5 game), maupun AI-ML Vision (Cartoonizer &amp; Face Detection).
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2 shrink-0">
@@ -2003,10 +2003,10 @@ export const AdminDashboard: React.FC<Props> = ({ session, store, onLogout }) =>
                   <button
                     type="button"
                     onClick={() => openAppMakerInPreview(null)}
-                    className="neo-btn bg-[#C084FC] px-3.5 py-2.5 text-xs font-extrabold inline-flex items-center justify-center gap-1.5 cursor-pointer"
+                    className="neo-btn bg-[#60A5FA] px-3.5 py-2.5 text-xs font-extrabold inline-flex items-center justify-center gap-1.5 cursor-pointer"
                   >
                     <Layers className="w-3.5 h-3.5" />
-                    App Maker (5)
+                    micro:bit (5)
                   </button>
                   <button
                     type="button"
@@ -2088,10 +2088,10 @@ export const AdminDashboard: React.FC<Props> = ({ session, store, onLogout }) =>
                   <div>
                     <h3 className="font-display text-xl sm:text-2xl font-extrabold flex items-center gap-2">
                       <Layers className="w-5 h-5 shrink-0" />
-                      Program Panduan App Maker (5 Proyek Interaktif — Semua Terbuka)
+                      Program Panduan micro:bit Lab (5 Proyek Hardware — Semua Terbuka)
                     </h3>
                     <p className="text-xs sm:text-sm text-neutral-700 mt-0.5">
-                      Photogram AI, Todo App, Simple Calculator, Color Generatif &amp; Weather App. Di siswa dibuka bertahap jika akses aktif.
+                      Flashing Heart, Dadu Digital, Piano &amp; Jukebox, Termometer &amp; Sensor Cahaya, serta Radio Telegrap. Di siswa dibuka bertahap jika akses aktif.
                     </p>
                   </div>
                   <button
@@ -2100,7 +2100,7 @@ export const AdminDashboard: React.FC<Props> = ({ session, store, onLogout }) =>
                     className="neo-btn bg-[#FFE600] px-3.5 py-2 text-xs font-extrabold inline-flex items-center gap-1.5 cursor-pointer"
                   >
                     <Award className="w-4 h-4" />
-                    Pratinjau Sertifikat App Maker
+                    Pratinjau Sertifikat micro:bit
                   </button>
                 </div>
 

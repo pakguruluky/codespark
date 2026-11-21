@@ -391,20 +391,12 @@ class CodeSparkDataEngine {
               directMode: false,
             });
           } else {
-            // Automatically connect in direct realtime mode if Firestore rules allow it
-            void this.connectFirebaseRealtime({
-              uid: 'direct_client',
-              email: null,
-              directMode: true,
-            });
+            // Firestore rules require verified Google sign-in; stay in clean local mode until signed in
+            this.fallbackToLocal('auth_required', null, user?.email ?? null);
           }
         });
       } else {
-        void this.connectFirebaseRealtime({
-          uid: 'direct_client',
-          email: null,
-          directMode: true,
-        });
+        this.fallbackToLocal('offline', null, null);
       }
     }
   }
@@ -1329,7 +1321,7 @@ class CodeSparkDataEngine {
     const codeStr = clampString(rawCode, 32).toUpperCase();
     const matchedCode = await this.lookupAccessCode(codeStr);
     if (!matchedCode) {
-      throw new Error(`Kode Akses "${codeStr}" tidak ditemukan! Minta kode kelas penuh, App Maker, Game Maker, atau AI-ML dari Admin.`);
+      throw new Error(`Kode Akses "${codeStr}" tidak ditemukan! Minta kode kelas penuh, micro:bit Lab, Game Maker, atau AI-ML dari Admin.`);
     }
     if (!matchedCode.isActive) {
       throw new Error(`Kode Akses "${codeStr}" sedang nonaktif.`);
@@ -1340,7 +1332,7 @@ class CodeSparkDataEngine {
       !matchedCode.includeGameMaker &&
       !matchedCode.includeAiMl
     ) {
-      throw new Error(`Kode "${codeStr}" adalah kode uji coba (Level 1 saja). Masukkan Kode Akses Kelas Penuh / App Maker / Game Maker / AI-ML dari Admin.`);
+      throw new Error(`Kode "${codeStr}" adalah kode uji coba (Level 1 saja). Masukkan Kode Akses Kelas Penuh / micro:bit Lab / Game Maker / AI-ML dari Admin.`);
     }
 
     const existing = this.snapshot.students.find((s) => s.id === studentId);
@@ -1703,7 +1695,7 @@ class CodeSparkDataEngine {
       const existingCert = this.snapshot.certificates.find((c) => c.id === certId);
       if (!existingCert) {
         const certNo = generateCertificateNo('app_maker');
-        const certTitle = 'App Maker: 5 Proyek Aplikasi Interaktif';
+        const certTitle = 'micro:bit Lab: 5 Proyek Hardware Interaktif';
         const certRecord: CertificateRecord = {
           id: certId,
           certificateNo: certNo,

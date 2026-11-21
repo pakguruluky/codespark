@@ -130,7 +130,7 @@ export const InstructorDashboard: React.FC<Props> = ({ session, store, onLogout 
         includeAiMl,
       });
       const extraTags = [
-        created.includeAppMaker ? '+ App Maker' : null,
+        created.includeAppMaker ? '+ micro:bit' : null,
         created.includeGameMaker ? '+ Game Maker' : null,
         created.includeAiMl ? '+ AI-ML' : null,
       ].filter(Boolean);
@@ -479,10 +479,10 @@ export const InstructorDashboard: React.FC<Props> = ({ session, store, onLogout 
                   <div className="min-w-0">
                     <div className="text-xs font-extrabold flex items-center gap-1.5">
                       <Layers className="w-3.5 h-3.5" />
-                      Sertakan Akses Program App Maker (5 Proyek)
+                      Sertakan Akses Program micro:bit Lab (5 Proyek)
                     </div>
                     <p className="text-[11px] text-neutral-600 mt-0.5">
-                      Siswa yang memakai kode ini otomatis mendapat akses 5 proyek App Maker bertahap.
+                      Siswa yang memakai kode ini otomatis mendapat akses 5 proyek micro:bit bertahap.
                     </p>
                   </div>
                 </button>
@@ -581,7 +581,7 @@ export const InstructorDashboard: React.FC<Props> = ({ session, store, onLogout 
                               </span>
                               {item.includeAppMaker && (
                                 <span className="text-xs font-extrabold px-2 py-0.5 border border-black bg-[#C084FC]">
-                                  + App Maker
+                                  + micro:bit
                                 </span>
                               )}
                               {item.includeGameMaker && (
@@ -699,7 +699,7 @@ export const InstructorDashboard: React.FC<Props> = ({ session, store, onLogout 
                                 <code className="font-mono text-xs text-neutral-600">{stu.accessCode}</code>
                                 {hasApp && (
                                   <span className="px-1.5 py-0.5 bg-[#C084FC] border border-black text-[10px] font-extrabold">
-                                    App Maker {stuAppProg.length}/{APP_MAKER_PROJECTS.length}
+                                    micro:bit {stuAppProg.length}/{APP_MAKER_PROJECTS.length}
                                   </span>
                                 )}
                                 {hasGame && (
@@ -753,7 +753,7 @@ export const InstructorDashboard: React.FC<Props> = ({ session, store, onLogout 
                                     >
                                       <Eye className="w-3 h-3" />
                                       {c.tierId === 'app_maker'
-                                        ? 'App Maker'
+                                        ? 'micro:bit'
                                         : c.tierId === 'game_maker'
                                           ? 'Game Maker'
                                           : c.tierId === 'ai_ml'

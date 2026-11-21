@@ -216,7 +216,7 @@ export const StudentDashboard: React.FC<Props> = ({
         hasAiMlAccess: updated.hasAiMlAccess,
       });
       const unlockedExtras = [
-        updated.hasAppMakerAccess ? 'Program App Maker (5 Proyek)' : null,
+        updated.hasAppMakerAccess ? 'Program micro:bit Lab (5 Proyek)' : null,
         updated.hasGameMakerAccess ? 'Program Game Maker (5 Game)' : null,
         updated.hasAiMlAccess ? 'Program AI-ML (2 Proyek)' : null,
       ].filter(Boolean);
@@ -305,8 +305,8 @@ export const StudentDashboard: React.FC<Props> = ({
     {
       id: 'app_maker',
       label: hasAppMaker
-        ? `App (${myAppMakerProgress.length}/${APP_MAKER_PROJECTS.length})`
-        : 'App 🔒',
+        ? `micro:bit (${myAppMakerProgress.length}/${APP_MAKER_PROJECTS.length})`
+        : 'micro:bit 🔒',
       icon: Layers,
     },
     {
@@ -446,11 +446,11 @@ export const StudentDashboard: React.FC<Props> = ({
                   ? 'bg-[#C084FC] text-black border-black'
                   : 'bg-[#3A414E] text-white border-white/15 hover:bg-[#485060]'
               }`}
-              title="Program Panduan App Maker (5 Proyek Interaktif)"
+              title="Program Panduan micro:bit Lab (5 Proyek Hardware Interaktif)"
             >
               {hasAppMaker ? <Layers className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}
               <span>
-                App Maker{hasAppMaker ? ` (${myAppMakerProgress.length}/${APP_MAKER_PROJECTS.length})` : ''}
+                micro:bit{hasAppMaker ? ` (${myAppMakerProgress.length}/${APP_MAKER_PROJECTS.length})` : ''}
               </span>
             </button>
 
@@ -715,12 +715,12 @@ export const StudentDashboard: React.FC<Props> = ({
                   },
                   {
                     id: 'app_maker' as const,
-                    title: 'App Maker',
-                    sub: '5 Proyek Web Interaktif',
+                    title: 'micro:bit Lab',
+                    sub: '5 Proyek Hardware & IoT',
                     done: myAppMakerProgress.length,
                     total: APP_MAKER_PROJECTS.length,
                     unlocked: hasAppMaker,
-                    accent: '#C084FC',
+                    accent: '#60A5FA',
                     mediaUnit: 'app_maker' as MediaUnitId,
                     onOpen: () => setActiveTab('app_maker'),
                   },
@@ -1139,7 +1139,7 @@ export const StudentDashboard: React.FC<Props> = ({
                 {myCertificates.map((cert) => {
                   const tierMeta =
                     cert.tierId === 'app_maker'
-                      ? { name: 'Program App Maker', accentColor: '#FB7185' }
+                      ? { name: 'Program micro:bit Lab', accentColor: '#60A5FA' }
                       : cert.tierId === 'game_maker'
                         ? { name: 'Program Game Maker', accentColor: '#38BDF8' }
                         : cert.tierId === 'ai_ml'
@@ -1238,7 +1238,7 @@ export const StudentDashboard: React.FC<Props> = ({
                     Aktivasi Kode Akses / Program Panduan
                   </h2>
                   <p className="text-xs font-semibold text-neutral-600">
-                    Kode aktif saat ini: {studentRecord.accessCode} · Buka Level 2–9, App Maker, Game Maker &amp; AI-ML
+                    Kode aktif saat ini: {studentRecord.accessCode} · Buka Level 2–9, micro:bit Lab, Game Maker &amp; AI-ML
                   </p>
                 </div>
               </div>

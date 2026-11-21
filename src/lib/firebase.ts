@@ -57,8 +57,8 @@ if (isFirebaseConfigured()) {
 
     try {
       dbInstance = useNamedDb
-        ? initializeFirestore(app, { experimentalAutoDetectLongPolling: true }, databaseId)
-        : initializeFirestore(app, { experimentalAutoDetectLongPolling: true });
+        ? initializeFirestore(app, { experimentalForceLongPolling: true }, databaseId)
+        : initializeFirestore(app, { experimentalForceLongPolling: true });
     } catch {
       dbInstance = useNamedDb ? getFirestore(app, databaseId) : getFirestore(app);
     }

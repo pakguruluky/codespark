@@ -172,7 +172,7 @@ export const LandingPage: React.FC<Props> = ({ onGoLogin, onGoRegister }) => {
               <div className="flex flex-wrap items-center gap-2 text-xs sm:text-sm font-bold text-neutral-700">
                 <span>Coding Studio</span>
                 <span aria-hidden="true">·</span>
-                <span>App Maker</span>
+                <span>micro:bit Lab</span>
                 <span aria-hidden="true">·</span>
                 <span>Game Maker</span>
                 <span aria-hidden="true">·</span>
@@ -183,7 +183,7 @@ export const LandingPage: React.FC<Props> = ({ onGoLogin, onGoRegister }) => {
                 className="font-display text-4xl sm:text-5xl lg:text-[3.1rem] font-extrabold leading-[1.08] tracking-tight"
                 style={{ textWrap: 'balance' }}
               >
-                Platform Belajar Coding, Game, Aplikasi &amp;{' '}
+                Platform Belajar Coding, Game, micro:bit &amp;{' '}
                 <span className="bg-[#FFE600] px-2 border-2 border-black inline-block">
                   AI Interaktif
                 </span>
@@ -192,7 +192,7 @@ export const LandingPage: React.FC<Props> = ({ onGoLogin, onGoRegister }) => {
               <p className="text-base sm:text-lg text-neutral-800 leading-relaxed max-w-xl">
                 Belajar pemrograman dari blok visual hingga Python dan JavaScript di studio pulau
                 isometrik bergaya Codementum lengkap dengan penggaris jarak, debugger per langkah,
-                slide interaktif, hingga lab proyek aplikasi, game, dan kamera AI realtime.
+                slide interaktif, hingga lab proyek mikrokontroler micro:bit, game, dan kamera AI realtime.
               </p>
 
               <div className="flex flex-wrap items-center gap-3.5 pt-1">
@@ -223,7 +223,7 @@ export const LandingPage: React.FC<Props> = ({ onGoLogin, onGoRegister }) => {
               <div className="pt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs sm:text-sm font-bold text-neutral-800 border-t-2 border-black/15 tabular-nums">
                 <span>9 Misi Studio</span>
                 <span aria-hidden="true">·</span>
-                <span>5 Proyek App Maker</span>
+                <span>5 Proyek micro:bit</span>
                 <span aria-hidden="true">·</span>
                 <span>5 Game Maker</span>
                 <span aria-hidden="true">·</span>
@@ -315,11 +315,11 @@ export const LandingPage: React.FC<Props> = ({ onGoLogin, onGoRegister }) => {
                 className="font-display text-3xl sm:text-4xl font-extrabold tracking-tight"
                 style={{ textWrap: 'balance' }}
               >
-                Dari Logika Dasar hingga Aplikasi Web, Game, dan Kamera AI Realtime
+                Dari Logika Dasar hingga micro:bit, Game Arcade, dan Kamera AI Realtime
               </h2>
               <p className="text-sm sm:text-base text-neutral-700 leading-relaxed">
                 Setiap siswa wajib menyelesaikan Coding Studio sebagai pondasi, dan dapat membuka
-                program lanjutan App Maker, Game Maker, serta AI-ML Vision melalui kode akses atau aktivasi Admin.
+                program lanjutan micro:bit Lab, Game Maker, serta AI-ML Vision melalui kode akses atau aktivasi Admin.
               </p>
             </div>
 
@@ -444,15 +444,15 @@ export const LandingPage: React.FC<Props> = ({ onGoLogin, onGoRegister }) => {
                     </div>
                     <div>
                       <div className="text-xs font-bold text-neutral-600">
-                        03. Program Pilihan · 5 Proyek Bertahap
+                        03. Program Pilihan · 5 Proyek Hardware
                       </div>
-                      <h3 className="font-display text-2xl font-extrabold">App Maker Studio</h3>
+                      <h3 className="font-display text-2xl font-extrabold">MakeCode micro:bit Lab</h3>
                     </div>
                   </div>
 
                   <p className="text-sm text-neutral-800 leading-relaxed">
-                    Bangun lima aplikasi web nyata selangkah demi selangkah. Proyek berikutnya otomatis
-                    terbuka setelah proyek sebelumnya tuntas.
+                    Program papan mikrokontroler BBC micro:bit v2 dengan Blocks, JavaScript &amp; Python:
+                    LED 5×5, tombol A/B, akselerometer, speaker piezo, sensor suhu/cahaya, hingga Radio.
                   </p>
 
                   <ol className="grid sm:grid-cols-2 gap-2.5 text-xs">
@@ -478,7 +478,7 @@ export const LandingPage: React.FC<Props> = ({ onGoLogin, onGoRegister }) => {
                 </div>
 
                 <div className="pt-3 border-t-2 border-black/15 text-xs font-bold text-neutral-700">
-                  Editor interaktif · Pratinjau langsung · Sertifikat App Maker
+                  Simulator micro:bit v2 · Blocks / JS / Python · Sertifikat micro:bit
                 </div>
               </div>
 

@@ -475,13 +475,13 @@ export const AuthPage: React.FC<Props> = ({
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-1.5">
                         <Layers className="w-3.5 h-3.5 shrink-0" />
-                        <span className="font-display font-extrabold text-sm">App Maker</span>
+                        <span className="font-display font-extrabold text-sm">micro:bit Lab</span>
                         <span className="px-1.5 py-0.5 bg-[#38BDF8] border border-black text-[10px] font-extrabold">
                           OPSIONAL · 5 PROYEK
                         </span>
                       </div>
                       <p className="text-[11px] text-neutral-700 mt-0.5 leading-snug">
-                        Proyek bertahap: Photogram AI, Todo App, Simple Calculator, Color Generatif &amp; Weather App. Terbuka lewat Kode Akses App Maker atau aktivasi Admin.
+                        Proyek hardware bertahap: Flashing Heart, Dadu Digital, Piano Jukebox, Sensor Suhu &amp; Radio Telegrap. Terbuka lewat Kode Akses micro:bit atau aktivasi Admin.
                       </p>
                     </div>
                   </button>
