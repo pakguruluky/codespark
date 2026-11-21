@@ -21,6 +21,7 @@ import {
   FlaskConical,
   ClipboardCheck,
   FileText,
+  Gamepad2,
 } from 'lucide-react';
 import type { Direction, TierId } from '../types';
 import {
@@ -31,16 +32,18 @@ import {
   type MediaUnitId,
 } from '../data/learningMedia';
 import { MascotPortrait } from './PandaMascot';
+import { KoalaMazeWorkspace } from './KoalaMazeWorkspace';
 import { soundEngine } from '../engine/soundEngine';
 
 interface Props {
   initialUnit?: MediaUnitId;
+  studentName?: string;
   onLaunchUnit?: (unitId: MediaUnitId) => void;
   onOpenPrintableModule?: (tier: TierId) => void;
   isAdminPreview?: boolean;
 }
 
-type MediaTab = 'slides' | 'sandbox' | 'quiz' | 'sheet';
+type MediaTab = 'slides' | 'sandbox' | 'koala_maze' | 'quiz' | 'sheet';
 type CodePreviewLang = 'blocks' | 'python' | 'javascript';
 
 // ===================== INTERACTIVE CONCEPT VISUALIZERS =====================
@@ -609,11 +612,13 @@ const MiniCommandSandbox: React.FC<{ promptText: string }> = ({ promptText }) =>
 
 export const LearningMediaHub: React.FC<Props> = ({
   initialUnit = 'pemula',
+  studentName = 'Siswa',
   onLaunchUnit,
   onOpenPrintableModule,
   isAdminPreview = false,
 }) => {
   const [selectedUnitId, setSelectedUnitId] = useState<MediaUnitId>(initialUnit);
+  const [koalaMode, setKoalaMode] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<MediaTab>('slides');
   const [slideIdx, setSlideIdx] = useState(0);
   const [codeLang, setCodeLang] = useState<CodePreviewLang>('blocks');
@@ -637,6 +642,7 @@ export const LearningMediaHub: React.FC<Props> = ({
   const handleChangeUnit = (id: MediaUnitId) => {
     stopSpeech();
     soundEngine.playButtonClick();
+    setKoalaMode(false);
     setSelectedUnitId(id);
     setSlideIdx(0);
   };
@@ -699,10 +705,27 @@ export const LearningMediaHub: React.FC<Props> = ({
         )}
       </div>
 
-      {/* Unit Selector Strip (6 Curriculum Units) */}
+      {/* Unit Selector Strip (6 Curriculum Units + Interactive Labirin Koala) */}
       <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={() => {
+            stopSpeech();
+            soundEngine.playButtonClick();
+            setKoalaMode(true);
+          }}
+          className={`px-3.5 py-2 border-2 border-black text-xs font-extrabold cursor-pointer transition-all whitespace-nowrap inline-flex items-center gap-1.5 ${
+            koalaMode
+              ? 'bg-[#3B3FA8] text-white shadow-[3px_3px_0px_0px_#000] -translate-y-0.5'
+              : 'bg-[#EEF2FF] text-[#3B3FA8] hover:bg-[#E0E7FF]'
+          }`}
+        >
+          <Gamepad2 className="w-3.5 h-3.5" />
+          Labirin Koala (4 Level · 18 Sub-Level)
+        </button>
+
         {LEARNING_MEDIA_UNITS.map((u) => {
-          const active = u.id === unit.id;
+          const active = !koalaMode && u.id === unit.id;
           return (
             <button
               key={u.id}
@@ -721,9 +744,13 @@ export const LearningMediaHub: React.FC<Props> = ({
         })}
       </div>
 
-      {/* Active Unit Workspace Card */}
+      {/* Standalone Full-Width Labirin Koala Mode */}
+      {koalaMode ? (
+        <KoalaMazeWorkspace studentName={studentName} />
+      ) : (
+      /* Active Unit Workspace Card */
       <div className="neo-card bg-white overflow-hidden">
-        {/* Unit Header + 4 Media Mode Tabs */}
+        {/* Unit Header + 5 Media Mode Tabs */}
         <div className="p-4 sm:p-5 bg-[#2C313A] text-white border-b-[3px] border-black flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <div className="text-xs font-bold text-neutral-300 flex items-center gap-2">
@@ -740,6 +767,7 @@ export const LearningMediaHub: React.FC<Props> = ({
             {[
               { id: 'slides' as const, label: 'Slide Konsep', icon: Presentation },
               { id: 'sandbox' as const, label: 'Lab Mini', icon: FlaskConical },
+              { id: 'koala_maze' as const, label: 'Labirin Koala', icon: Gamepad2 },
               {
                 id: 'quiz' as const,
                 label: `Kuis (${unitCorrectCount}/${unit.quiz.length})`,
@@ -960,6 +988,9 @@ export const LearningMediaHub: React.FC<Props> = ({
           {/* TAB 2: INTERACTIVE MINI COMMAND SANDBOX */}
           {activeTab === 'sandbox' && <MiniCommandSandbox promptText={unit.sandboxPrompt} />}
 
+          {/* TAB 2B: INTERACTIVE KOALA CLASSIC MAZE */}
+          {activeTab === 'koala_maze' && <KoalaMazeWorkspace studentName={studentName} />}
+
           {/* TAB 3: INTERACTIVE CONCEPT QUIZ */}
           {activeTab === 'quiz' && (
             <div className="space-y-5">
@@ -1140,6 +1171,7 @@ export const LearningMediaHub: React.FC<Props> = ({
           )}
         </div>
       </div>
+      )}
     </main>
   );
 };

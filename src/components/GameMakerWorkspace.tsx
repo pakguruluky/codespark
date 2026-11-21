@@ -1,35 +1,46 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   AlertCircle,
-  ArrowDown,
-  ArrowLeft,
-  ArrowRight,
-  ArrowUp,
   Award,
   Check,
   CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
   Code2,
+  Download,
   Gamepad2,
   Grid3X3,
-  Heart,
+  HelpCircle,
+  Home,
   Image as ImageIcon,
-  KeyRound,
   Layers,
-  Lightbulb,
+  ListChecks,
   Lock,
   MessageCircle,
-  Pause,
+  Minus,
+  Music,
   Phone,
   Play,
+  Plus,
+  Puzzle,
+  Redo2,
   RefreshCw,
+  Repeat,
   Rocket,
-  RotateCcw,
+  Save,
+  Search,
+  Send,
   Shield,
+  SlidersHorizontal,
   Sparkles,
+  Split,
   Star,
+  Trees,
   Trophy,
+  Undo2,
   Unlock,
-  Zap,
+  Wand2,
+  X,
 } from 'lucide-react';
 import type {
   CertificateRecord,
@@ -38,11 +49,27 @@ import type {
 } from '../types';
 import {
   GAME_MAKER_PROJECTS,
-  buildGameCodeFromSteps,
   getGameMakerProjectById,
   type GameMakerProjectDef,
 } from '../data/gameMakerProjects';
-import { soundEngine } from '../engine/soundEngine';
+import {
+  ARCADE_CATEGORIES,
+  ARCADE_FLYOUT_TEMPLATES,
+  arcadeProgramToPython,
+  getCategoryColor,
+  getEventColor,
+  makeBlockId,
+  parseArcadePython,
+  playArcadeSfx,
+  type ArcadeBlockProgram,
+  type ArcadeCategoryId,
+  type ArcadeHudSnapshot,
+  type FlyoutTemplate,
+} from '../engine/arcadeEngine';
+import type { PixelSpriteGrid } from '../engine/arcadeSprites';
+import { ArcadeHandheldConsole } from './ArcadeHandheldConsole';
+import { ArcadeBlocksCanvas } from './ArcadeBlocksCanvas';
+import { ArcadePixelEditor } from './ArcadePixelEditor';
 import { formatWhatsAppUrl } from '../utils/crypto';
 
 interface Props {
@@ -62,6 +89,18 @@ interface Props {
   onOpenCertificates?: () => void;
 }
 
+type EditorTab = 'blocks' | 'python' | 'assets';
+
+function cloneProgram(prog: ArcadeBlockProgram): ArcadeBlockProgram {
+  return {
+    containers: prog.containers.map((c) => ({
+      ...c,
+      params: { ...c.params },
+      blocks: c.blocks.map((b) => ({ ...b, params: { ...b.params } })),
+    })),
+  };
+}
+
 function getGameIcon(id: GameMakerProjectId) {
   switch (id) {
     case 'game_image_match':
@@ -77,1821 +116,1270 @@ function getGameIcon(id: GameMakerProjectId) {
   }
 }
 
-function shuffleArray<T>(arr: T[]): T[] {
-  const copy = [...arr];
-  for (let i = copy.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [copy[i], copy[j]] = [copy[j], copy[i]];
+function getCategoryIcon(id: ArcadeCategoryId) {
+  switch (id) {
+    case 'sprites':
+      return Send;
+    case 'controller':
+      return Gamepad2;
+    case 'game':
+      return Sparkles;
+    case 'music':
+      return Music;
+    case 'scene':
+      return Trees;
+    case 'info':
+      return ListChecks;
+    case 'loops':
+      return Repeat;
+    case 'logic':
+      return Split;
+    case 'variables':
+      return SlidersHorizontal;
   }
-  return copy;
 }
 
-// ==================== 1. IMAGE MATCH LIVE GAME ====================
-
-const MATCH_POOL = [
-  { id: 'panda', emoji: '🐼', label: 'Panda', bg: '#DCFCE7' },
-  { id: 'rocket', emoji: '🚀', label: 'Roket', bg: '#E0F2FE' },
-  { id: 'crown', emoji: '👑', label: 'Mahkota', bg: '#FEF9C3' },
-  { id: 'robot', emoji: '🤖', label: 'Robot', bg: '#F3E8FF' },
-  { id: 'star', emoji: '🌟', label: 'Bintang', bg: '#FFEDD5' },
-  { id: 'gem', emoji: '💎', label: 'Permata', bg: '#FCE7F3' },
-  { id: 'bear', emoji: '🐻', label: 'Beruang', bg: '#FEF3C7' },
-  { id: 'koala', emoji: '🐨', label: 'Koala', bg: '#E2E8F0' },
-];
-
-const ImageMatchLiveGame: React.FC<{ gameTitle: string; enabledSteps: Set<string> }> = ({
-  gameTitle,
-  enabledSteps,
-}) => {
-  const [options, setOptions] = useState(() => shuffleArray(MATCH_POOL).slice(0, 6));
-  const [targetId, setTargetId] = useState(() => options[0].id);
-  const [score, setScore] = useState(0);
-  const [matches, setMatches] = useState(0);
-  const [combo, setCombo] = useState(0);
-  const [feedback, setFeedback] = useState<string>('Pilih gambar yang sama persis dengan target!');
-
-  const hasBoard = enabledSteps.has('gm_im_board');
-  const hasCheck = enabledSteps.has('gm_im_check');
-  const hasCombo = enabledSteps.has('gm_im_combo');
-  const hasWin = enabledSteps.has('gm_im_win');
-
-  const targetItem = options.find((o) => o.id === targetId) || options[0];
-  const won = hasWin && matches >= 6;
-
-  const nextRound = () => {
-    const nextOpts = shuffleArray(MATCH_POOL).slice(0, 6);
-    const nextTarget = nextOpts[Math.floor(Math.random() * nextOpts.length)];
-    setOptions(nextOpts);
-    setTargetId(nextTarget.id);
-  };
-
-  const handleRestart = () => {
-    soundEngine.playButtonClick();
-    setScore(0);
-    setMatches(0);
-    setCombo(0);
-    setFeedback('Ronde baru dimulai! Cari gambar yang cocok!');
-    nextRound();
-  };
-
-  const handlePick = (itemId: string) => {
-    if (!hasCheck || won) return;
-    if (itemId === targetItem.id) {
-      const nextCombo = hasCombo ? combo + 1 : 1;
-      const gain = 10 + (hasCombo && nextCombo >= 2 ? (nextCombo - 1) * 5 : 0);
-      const nextMatches = matches + 1;
-      setScore((s) => s + gain);
-      setMatches(nextMatches);
-      setCombo(nextCombo);
-      if (hasWin && nextMatches >= 6) {
-        soundEngine.playVictory();
-        setFeedback('🎉 Target 6 cocok tercapai! Kamu menang Image Match!');
-      } else {
-        soundEngine.playGemCollect();
-        setFeedback(`Cocok! +${gain} poin${hasCombo && nextCombo >= 2 ? ` (Kombo x${nextCombo}!)` : ''}`);
-        if (hasCombo) {
-          nextRound();
-        } else {
-          const other = options[Math.floor(Math.random() * options.length)];
-          setTargetId(other.id);
-        }
-      }
-    } else {
-      soundEngine.playCrash();
-      setCombo(0);
-      setFeedback('Belum cocok! Coba perhatikan gambar target di atas.');
-    }
-  };
-
-  return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between border-b-2 border-black pb-2">
-        <div className="flex items-center gap-2 font-display font-extrabold text-sm">
-          <ImageIcon className="w-4 h-4" />
-          <span className="truncate">{gameTitle}</span>
-        </div>
-        <button
-          type="button"
-          onClick={handleRestart}
-          className="px-2 py-0.5 bg-[#FFE600] border border-black text-[10px] font-extrabold inline-flex items-center gap-1 cursor-pointer"
-        >
-          <RefreshCw className="w-3 h-3" />
-          Ulang
-        </button>
-      </div>
-
-      {!hasBoard ? (
-        <div className="p-5 text-center border-2 border-dashed border-black/30 text-xs font-bold text-neutral-500">
-          Aktifkan Modul 1 (Papan Target &amp; Grid Gambar) untuk menampilkan arena game.
-        </div>
-      ) : (
-        <>
-          {/* HUD Bar */}
-          <div className="grid grid-cols-3 gap-1.5 text-center">
-            <div className="p-1.5 bg-white border-2 border-black">
-              <div className="text-[10px] font-bold text-neutral-500">Skor</div>
-              <div className="font-mono text-sm font-extrabold">{score}</div>
-            </div>
-            <div className="p-1.5 bg-white border-2 border-black">
-              <div className="text-[10px] font-bold text-neutral-500">Kombo</div>
-              <div className="font-mono text-sm font-extrabold">{hasCombo ? `x${combo}` : '—'}</div>
-            </div>
-            <div className="p-1.5 bg-white border-2 border-black">
-              <div className="text-[10px] font-bold text-neutral-500">Target</div>
-              <div className="font-mono text-sm font-extrabold">{hasWin ? `${matches}/6` : matches}</div>
-            </div>
-          </div>
-
-          {/* Target Box */}
-          <div className="p-3 bg-[#FFE600] border-2 border-black flex items-center justify-between">
-            <div>
-              <div className="text-[10px] font-extrabold uppercase">Gambar Target:</div>
-              <div className="font-display text-base font-extrabold">{targetItem.label}</div>
-            </div>
-            <div className="w-14 h-14 bg-white border-2 border-black shadow-[2px_2px_0px_0px_#000] flex items-center justify-center text-3xl">
-              {targetItem.emoji}
-            </div>
-          </div>
-
-          {/* Grid Options */}
-          <div className="grid grid-cols-3 gap-2">
-            {options.map((opt) => (
-              <button
-                key={opt.id}
-                type="button"
-                disabled={!hasCheck || won}
-                onClick={() => handlePick(opt.id)}
-                className={`p-3 border-2 border-black flex flex-col items-center justify-center gap-1 transition-transform ${
-                  hasCheck && !won
-                    ? 'cursor-pointer hover:-translate-y-0.5 active:translate-y-0 shadow-[2px_2px_0px_0px_#000]'
-                    : 'opacity-70 cursor-not-allowed'
-                }`}
-                style={{ backgroundColor: opt.bg }}
-              >
-                <span className="text-3xl leading-none">{opt.emoji}</span>
-                <span className="text-[10px] font-extrabold">{opt.label}</span>
-              </button>
-            ))}
-          </div>
-
-          <div
-            className={`p-2 border-2 border-black text-xs font-extrabold text-center ${
-              won ? 'bg-[#4ADE80]' : 'bg-white'
-            }`}
-          >
-            {feedback}
-          </div>
-
-          {!hasCheck && (
-            <div className="p-2 bg-neutral-100 border border-dashed border-black/40 text-[11px] font-bold text-neutral-500">
-              🔒 Aktifkan Modul 2 agar kartu gambar bisa diklik dan dinilai skornya.
-            </div>
-          )}
-        </>
-      )}
-    </div>
-  );
-};
-
-// ==================== 2. MEMORY CARD LIVE GAME ====================
-
-const MEMORY_ICONS = ['🐼', '🦊', '🚀', '💎', '🎮', '🌈'];
-
-interface MemoryCardItem {
-  uid: number;
-  icon: string;
-  matched: boolean;
-}
-
-function createMemoryDeck(): MemoryCardItem[] {
-  return shuffleArray([...MEMORY_ICONS, ...MEMORY_ICONS]).map((icon, idx) => ({
-    uid: idx,
-    icon,
-    matched: false,
-  }));
-}
-
-const MemoryCardLiveGame: React.FC<{ gameTitle: string; enabledSteps: Set<string> }> = ({
-  gameTitle,
-  enabledSteps,
-}) => {
-  const [deck, setDeck] = useState<MemoryCardItem[]>(() => createMemoryDeck());
-  const [flippedUids, setFlippedUids] = useState<number[]>([]);
-  const [moves, setMoves] = useState(0);
-  const [locked, setLocked] = useState(false);
-
-  const hasDeck = enabledSteps.has('gm_mc_deck');
-  const hasFlip = enabledSteps.has('gm_mc_flip');
-  const hasStats = enabledSteps.has('gm_mc_stats');
-  const hasWin = enabledSteps.has('gm_mc_win');
-
-  const matchedPairs = deck.filter((c) => c.matched).length / 2;
-  const allMatched = matchedPairs === MEMORY_ICONS.length;
-
-  const handleRestart = () => {
-    soundEngine.playButtonClick();
-    setDeck(createMemoryDeck());
-    setFlippedUids([]);
-    setMoves(0);
-    setLocked(false);
-  };
-
-  const handleCardClick = (uid: number) => {
-    if (!hasFlip || locked) return;
-    const card = deck.find((c) => c.uid === uid);
-    if (!card || card.matched || flippedUids.includes(uid)) return;
-
-    soundEngine.playBlockSnap();
-    const nextFlipped = [...flippedUids, uid];
-    setFlippedUids(nextFlipped);
-
-    if (nextFlipped.length === 2) {
-      setMoves((m) => m + 1);
-      const first = deck.find((c) => c.uid === nextFlipped[0]);
-      const second = deck.find((c) => c.uid === nextFlipped[1]);
-      if (first && second && first.icon === second.icon) {
-        const nextDeck = deck.map((c) =>
-          c.uid === first.uid || c.uid === second.uid ? { ...c, matched: true } : c
-        );
-        setDeck(nextDeck);
-        setFlippedUids([]);
-        const doneNow = nextDeck.every((c) => c.matched);
-        if (doneNow && hasWin) {
-          soundEngine.playVictory();
-        } else {
-          soundEngine.playGemCollect();
-        }
-      } else {
-        setLocked(true);
-        window.setTimeout(() => {
-          setFlippedUids([]);
-          setLocked(false);
-        }, 650);
-      }
-    }
-  };
-
-  return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between border-b-2 border-black pb-2">
-        <div className="flex items-center gap-2 font-display font-extrabold text-sm">
-          <Grid3X3 className="w-4 h-4 text-purple-700" />
-          <span className="truncate">{gameTitle}</span>
-        </div>
-        {hasStats && (
-          <button
-            type="button"
-            onClick={handleRestart}
-            className="px-2 py-0.5 bg-[#FFE600] border border-black text-[10px] font-extrabold inline-flex items-center gap-1 cursor-pointer"
-          >
-            <RefreshCw className="w-3 h-3" />
-            Acak Ulang
-          </button>
-        )}
-      </div>
-
-      {!hasDeck ? (
-        <div className="p-5 text-center border-2 border-dashed border-black/30 text-xs font-bold text-neutral-500">
-          Aktifkan Modul 1 (Dek 12 Kartu) untuk menampilkan papan kartu memori.
-        </div>
-      ) : (
-        <>
-          {hasStats && (
-            <div className="grid grid-cols-2 gap-2 text-center">
-              <div className="p-1.5 bg-white border-2 border-black">
-                <div className="text-[10px] font-bold text-neutral-500">Langkah</div>
-                <div className="font-mono text-sm font-extrabold">{moves}</div>
-              </div>
-              <div className="p-1.5 bg-white border-2 border-black">
-                <div className="text-[10px] font-bold text-neutral-500">Pasangan Cocok</div>
-                <div className="font-mono text-sm font-extrabold">
-                  {matchedPairs}/{MEMORY_ICONS.length}
-                </div>
-              </div>
-            </div>
-          )}
-
-          <div className="grid grid-cols-4 gap-2">
-            {deck.map((card) => {
-              const isOpen = card.matched || flippedUids.includes(card.uid);
-              return (
-                <button
-                  key={card.uid}
-                  type="button"
-                  disabled={!hasFlip || card.matched}
-                  onClick={() => handleCardClick(card.uid)}
-                  className={`h-16 border-2 border-black flex items-center justify-center text-2xl font-extrabold transition-all ${
-                    card.matched
-                      ? 'bg-[#4ADE80]'
-                      : isOpen
-                        ? 'bg-[#FFE600]'
-                        : hasFlip
-                          ? 'bg-[#C084FC] hover:bg-[#D8B4FE] cursor-pointer shadow-[2px_2px_0px_0px_#000]'
-                          : 'bg-neutral-200 cursor-not-allowed'
-                  }`}
-                >
-                  {isOpen ? card.icon : '?'}
-                </button>
-              );
-            })}
-          </div>
-
-          {hasWin && allMatched && (
-            <div className="p-2.5 bg-[#4ADE80] border-2 border-black text-xs font-extrabold text-center flex items-center justify-center gap-1.5">
-              <Trophy className="w-4 h-4" />
-              Semua 6 Pasang Kartu Ditemukan dalam {moves} Langkah!
-            </div>
-          )}
-
-          {!hasFlip && (
-            <div className="p-2 bg-neutral-100 border border-dashed border-black/40 text-[11px] font-bold text-neutral-500">
-              🔒 Aktifkan Modul 2 agar kartu dapat dibalik dan dicocokkan.
-            </div>
-          )}
-        </>
-      )}
-    </div>
-  );
-};
-
-// ==================== 3. COLOR PUZZLE LIVE GAME ====================
-
-const PUZZLE_COLORS = ['#FFE600', '#4ADE80', '#38BDF8', '#C084FC'];
-const PUZZLE_LEVELS = [
+const PYTHON_SNIPPETS: Array<{ label: string; code: string }> = [
   {
-    name: 'Lv 1: Pelangi Baris',
-    target: [0, 0, 0, 1, 1, 1, 2, 2, 2],
-    start: [0, 1, 0, 1, 2, 1, 2, 0, 2],
+    label: '+ Tembak Laser (A)',
+    code: `\ndef on_a_pressed():\n    sprites.create_projectile_from_sprite(assets.image("laser"), my_sprite, 0, -135)\n    music.play_sound("pew_pew")\ncontroller.A.on_event(ControllerButtonEvent.PRESSED, on_a_pressed)\n`,
   },
   {
-    name: 'Lv 2: Silang Neon',
-    target: [3, 0, 3, 0, 2, 0, 3, 0, 3],
-    start: [0, 0, 3, 0, 1, 0, 3, 2, 0],
+    label: '+ Spawn Musuh',
+    code: `\ndef on_spawn_enemy():\n    sprites.spawn(SpriteKind.enemy, assets.image("meteor"), 48, "top_random")\ngame.on_update_interval(1100, on_spawn_enemy)\n`,
   },
   {
-    name: 'Lv 3: Mahkota Warna',
-    target: [0, 3, 0, 2, 1, 2, 1, 1, 1],
-    start: [2, 3, 1, 2, 0, 2, 1, 3, 1],
+    label: '+ Overlap Food (+15)',
+    code: `\ndef on_hit_food(sprite, other_sprite):\n    other_sprite.destroy("confetti")\n    info.change_score_by(15)\n    music.play_sound("ba_ding")\nsprites.on_overlap(SpriteKind.player, SpriteKind.food, on_hit_food)\n`,
+  },
+  {
+    label: '+ Overlap Enemy (-1)',
+    code: `\ndef on_hit_enemy(sprite, other_sprite):\n    other_sprite.destroy("fire")\n    info.change_life_by(-1)\n    music.play_sound("zapped")\nsprites.on_overlap(SpriteKind.player, SpriteKind.enemy, on_hit_enemy)\n`,
   },
 ];
-
-const ColorPuzzleLiveGame: React.FC<{ gameTitle: string; enabledSteps: Set<string> }> = ({
-  gameTitle,
-  enabledSteps,
-}) => {
-  const [lvlIdx, setLvlIdx] = useState(0);
-  const [tiles, setTiles] = useState<number[]>(() => [...PUZZLE_LEVELS[0].start]);
-  const [showHint, setShowHint] = useState(false);
-
-  const hasGrid = enabledSteps.has('gm_cp_grid');
-  const hasTap = enabledSteps.has('gm_cp_tap');
-  const hasTarget = enabledSteps.has('gm_cp_target');
-  const hasWin = enabledSteps.has('gm_cp_win');
-
-  const currentLvl = PUZZLE_LEVELS[lvlIdx];
-  const matchedCount = tiles.filter((val, i) => val === currentLvl.target[i]).length;
-  const solved = matchedCount === 9;
-
-  const selectLevel = (idx: number) => {
-    soundEngine.playButtonClick();
-    setLvlIdx(idx);
-    setTiles([...PUZZLE_LEVELS[idx].start]);
-    setShowHint(false);
-  };
-
-  const handleTileTap = (index: number) => {
-    if (!hasTap) return;
-    soundEngine.playBlockSnap();
-    const next = [...tiles];
-    next[index] = (next[index] + 1) % PUZZLE_COLORS.length;
-    setTiles(next);
-    if (hasWin && next.every((val, i) => val === currentLvl.target[i])) {
-      soundEngine.playVictory();
-    }
-  };
-
-  return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between border-b-2 border-black pb-2">
-        <div className="flex items-center gap-2 font-display font-extrabold text-sm">
-          <Sparkles className="w-4 h-4 text-[#E11D48]" />
-          <span className="truncate">{gameTitle}</span>
-        </div>
-        {hasWin && (
-          <span className="px-2 py-0.5 bg-[#4ADE80] border border-black font-mono text-[10px] font-extrabold">
-            {matchedCount}/9 COCOK
-          </span>
-        )}
-      </div>
-
-      {!hasGrid ? (
-        <div className="p-5 text-center border-2 border-dashed border-black/30 text-xs font-bold text-neutral-500">
-          Aktifkan Modul 1 (Papan Puzzle Warna 3×3) untuk memulai.
-        </div>
-      ) : (
-        <>
-          {/* Level Selector + Mini Target Pattern */}
-          {hasTarget ? (
-            <div className="p-2.5 bg-white border-2 border-black flex items-center justify-between gap-3">
-              <div className="space-y-1.5 flex-1">
-                <div className="text-[10px] font-extrabold uppercase text-neutral-600">
-                  Pola Target ({currentLvl.name}):
-                </div>
-                <div className="flex flex-wrap gap-1">
-                  {PUZZLE_LEVELS.map((_, idx) => (
-                    <button
-                      key={idx}
-                      type="button"
-                      onClick={() => selectLevel(idx)}
-                      className={`px-2 py-0.5 border border-black text-[10px] font-extrabold cursor-pointer ${
-                        idx === lvlIdx ? 'bg-[#FFE600]' : 'bg-white'
-                      }`}
-                    >
-                      Lv {idx + 1}
-                    </button>
-                  ))}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      soundEngine.playButtonClick();
-                      setShowHint((h) => !h);
-                    }}
-                    className={`px-2 py-0.5 border border-black text-[10px] font-extrabold inline-flex items-center gap-0.5 cursor-pointer ${
-                      showHint ? 'bg-[#38BDF8]' : 'bg-white'
-                    }`}
-                  >
-                    <Lightbulb className="w-3 h-3" />
-                    Hint
-                  </button>
-                </div>
-              </div>
-
-              {/* Mini 3x3 Target */}
-              <div className="grid grid-cols-3 gap-0.5 p-1 bg-black shrink-0">
-                {currentLvl.target.map((cIdx, idx) => (
-                  <div
-                    key={idx}
-                    className="w-4 h-4"
-                    style={{ backgroundColor: PUZZLE_COLORS[cIdx] }}
-                  />
-                ))}
-              </div>
-            </div>
-          ) : (
-            <div className="p-2 bg-neutral-100 border border-dashed border-black/40 text-[11px] font-bold text-neutral-500">
-              🔒 Aktifkan Modul 3 untuk melihat Pola Target &amp; tombol Hint.
-            </div>
-          )}
-
-          {/* Main Interactive 3x3 Grid */}
-          <div className="grid grid-cols-3 gap-2 max-w-[240px] mx-auto">
-            {tiles.map((cIdx, idx) => {
-              const wrong = hasTarget && showHint && cIdx !== currentLvl.target[idx];
-              return (
-                <button
-                  key={idx}
-                  type="button"
-                  disabled={!hasTap}
-                  onClick={() => handleTileTap(idx)}
-                  className={`h-16 border-[3px] border-black flex items-center justify-center font-extrabold text-xs transition-transform ${
-                    hasTap
-                      ? 'cursor-pointer active:scale-95 shadow-[3px_3px_0px_0px_#000]'
-                      : 'cursor-not-allowed opacity-75'
-                  }`}
-                  style={{ backgroundColor: PUZZLE_COLORS[cIdx] }}
-                >
-                  {wrong ? '!' : ''}
-                </button>
-              );
-            })}
-          </div>
-
-          {hasWin && solved && (
-            <div className="p-2.5 bg-[#4ADE80] border-2 border-black text-xs font-extrabold text-center flex items-center justify-center gap-1.5">
-              <Trophy className="w-4 h-4" />
-              Hebat! Pola Warna 3×3 Cocok Sempurna!
-            </div>
-          )}
-
-          {!hasTap && (
-            <div className="p-2 bg-neutral-100 border border-dashed border-black/40 text-[11px] font-bold text-neutral-500">
-              🔒 Aktifkan Modul 2 agar ubin bisa diklik untuk mengganti warna.
-            </div>
-          )}
-        </>
-      )}
-    </div>
-  );
-};
-
-// ==================== 4. SAVE THE POLAR BEAR LIVE GAME ====================
-
-// 0 = ice, 1 = water/hole, 2 = fish, 3 = safe island
-const INITIAL_ARCTIC_MAP = [
-  [0, 0, 2, 0, 0],
-  [0, 1, 0, 1, 0],
-  [2, 0, 0, 0, 2],
-  [0, 1, 0, 1, 0],
-  [0, 0, 0, 0, 3],
-];
-
-const SavePolarBearLiveGame: React.FC<{ gameTitle: string; enabledSteps: Set<string> }> = ({
-  gameTitle,
-  enabledSteps,
-}) => {
-  const [grid, setGrid] = useState<number[][]>(() => INITIAL_ARCTIC_MAP.map((r) => [...r]));
-  const [pos, setPos] = useState({ x: 0, y: 0 });
-  const [fish, setFish] = useState(0);
-  const [status, setStatus] = useState<'playing' | 'won' | 'trapped'>('playing');
-
-  const hasMap = enabledSteps.has('gm_pb_map');
-  const hasMove = enabledSteps.has('gm_pb_move');
-  const hasIce = enabledSteps.has('gm_pb_ice');
-  const hasRescue = enabledSteps.has('gm_pb_rescue');
-
-  const handleReset = () => {
-    soundEngine.playButtonClick();
-    setGrid(INITIAL_ARCTIC_MAP.map((r) => [...r]));
-    setPos({ x: 0, y: 0 });
-    setFish(0);
-    setStatus('playing');
-  };
-
-  const moveBear = (dx: number, dy: number) => {
-    if (!hasMove || status !== 'playing') return;
-    const nx = pos.x + dx;
-    const ny = pos.y + dy;
-    if (nx < 0 || nx >= 5 || ny < 0 || ny >= 5) {
-      soundEngine.playCrash();
-      return;
-    }
-    const targetTile = grid[ny][nx];
-    if (targetTile === 1) {
-      soundEngine.playCrash();
-      return;
-    }
-
-    const nextGrid = grid.map((r) => [...r]);
-    if (hasIce) {
-      nextGrid[pos.y][pos.x] = 1; // Previous ice melts into ocean!
-    }
-
-    if (hasRescue && targetTile === 2) {
-      setFish((f) => f + 1);
-      nextGrid[ny][nx] = 0;
-      soundEngine.playGemCollect();
-    } else if (hasRescue && targetTile === 3) {
-      setGrid(nextGrid);
-      setPos({ x: nx, y: ny });
-      setStatus('won');
-      soundEngine.playVictory();
-      return;
-    } else {
-      soundEngine.playStep();
-    }
-
-    setGrid(nextGrid);
-    setPos({ x: nx, y: ny });
-
-    // Check if trapped (all 4 neighbors blocked)
-    if (hasIce) {
-      const dirs = [
-        [1, 0],
-        [-1, 0],
-        [0, 1],
-        [0, -1],
-      ];
-      const canEscape = dirs.some(([ox, oy]) => {
-        const cx = nx + ox;
-        const cy = ny + oy;
-        return cx >= 0 && cx < 5 && cy >= 0 && cy < 5 && nextGrid[cy][cx] !== 1;
-      });
-      if (!canEscape) {
-        setStatus('trapped');
-        soundEngine.playCrash();
-      }
-    }
-  };
-
-  return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between border-b-2 border-black pb-2">
-        <div className="flex items-center gap-2 font-display font-extrabold text-sm">
-          <Shield className="w-4 h-4 text-sky-700" />
-          <span className="truncate">{gameTitle}</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          {hasRescue && (
-            <span className="px-2 py-0.5 bg-[#FFE600] border border-black font-mono text-[10px] font-extrabold">
-              🐟 {fish}/3
-            </span>
-          )}
-          <button
-            type="button"
-            onClick={handleReset}
-            className="px-2 py-0.5 bg-white border border-black text-[10px] font-extrabold inline-flex items-center gap-1 cursor-pointer"
-          >
-            <RotateCcw className="w-3 h-3" />
-            Ulang
-          </button>
-        </div>
-      </div>
-
-      {!hasMap ? (
-        <div className="p-5 text-center border-2 border-dashed border-black/30 text-xs font-bold text-neutral-500">
-          Aktifkan Modul 1 (Peta Es Kutub 5×5) untuk menampilkan Beruang Kutub.
-        </div>
-      ) : (
-        <>
-          {/* 5x5 Arctic Grid */}
-          <div className="grid grid-cols-5 gap-1 max-w-[260px] mx-auto p-1.5 bg-[#0EA5E9] border-2 border-black">
-            {grid.map((row, y) =>
-              row.map((cell, x) => {
-                const isBear = pos.x === x && pos.y === y;
-                let bg = '#E0F2FE';
-                let symbol = '';
-                if (cell === 1) {
-                  bg = '#0284C7';
-                  symbol = '🌊';
-                } else if (cell === 2 && hasRescue) {
-                  bg = '#BAE6FD';
-                  symbol = '🐟';
-                } else if (cell === 3 && hasRescue) {
-                  bg = '#4ADE80';
-                  symbol = '🏝️';
-                }
-
-                return (
-                  <div
-                    key={`${x}-${y}`}
-                    className="h-11 border border-black flex items-center justify-center text-xl font-bold select-none"
-                    style={{ backgroundColor: bg }}
-                  >
-                    {isBear ? '🐻‍❄️' : symbol}
-                  </div>
-                );
-              })
-            )}
-          </div>
-
-          {/* D-Pad Controls */}
-          {hasMove ? (
-            <div className="flex flex-col items-center gap-1">
-              <button
-                type="button"
-                onClick={() => moveBear(0, -1)}
-                className="w-11 h-9 bg-[#FFE600] border-2 border-black flex items-center justify-center cursor-pointer active:translate-y-0.5"
-                aria-label="Atas"
-              >
-                <ArrowUp className="w-4 h-4" />
-              </button>
-              <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  onClick={() => moveBear(-1, 0)}
-                  className="w-11 h-9 bg-[#FFE600] border-2 border-black flex items-center justify-center cursor-pointer active:translate-y-0.5"
-                  aria-label="Kiri"
-                >
-                  <ArrowLeft className="w-4 h-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => moveBear(0, 1)}
-                  className="w-11 h-9 bg-[#FFE600] border-2 border-black flex items-center justify-center cursor-pointer active:translate-y-0.5"
-                  aria-label="Bawah"
-                >
-                  <ArrowDown className="w-4 h-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => moveBear(1, 0)}
-                  className="w-11 h-9 bg-[#FFE600] border-2 border-black flex items-center justify-center cursor-pointer active:translate-y-0.5"
-                  aria-label="Kanan"
-                >
-                  <ArrowRight className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div className="p-2 bg-neutral-100 border border-dashed border-black/40 text-[11px] font-bold text-neutral-500">
-              🔒 Aktifkan Modul 2 untuk menyalakan tombol arah 4 penjuru.
-            </div>
-          )}
-
-          {status === 'won' && (
-            <div className="p-2.5 bg-[#4ADE80] border-2 border-black text-xs font-extrabold text-center">
-              🎉 Beruang Kutub berhasil selamat di Pulau Aman! (Ikan terkumpul: {fish}/3)
-            </div>
-          )}
-          {status === 'trapped' && (
-            <div className="p-2.5 bg-[#FB7185] border-2 border-black text-xs font-extrabold text-center">
-              Es di sekitar mencair! Klik "Ulang" untuk mencoba jalur penyelamatan lain.
-            </div>
-          )}
-        </>
-      )}
-    </div>
-  );
-};
-
-// ==================== 5. SPACE MISSION LIVE GAME ====================
-
-interface SpaceEntity {
-  id: number;
-  lane: number; // 0..4
-  row: number; // 0..5 (5 = ship row)
-  kind: 'meteor' | 'star';
-}
-
-const SpaceMissionLiveGame: React.FC<{ gameTitle: string; enabledSteps: Set<string> }> = ({
-  gameTitle,
-  enabledSteps,
-}) => {
-  const [shipLane, setShipLane] = useState(2);
-  const [running, setRunning] = useState(false);
-  const [entities, setEntities] = useState<SpaceEntity[]>([]);
-  const [laserLane, setLaserLane] = useState<number | null>(null);
-  const [score, setScore] = useState(0);
-  const [lives, setLives] = useState(3);
-  const [missionWon, setMissionWon] = useState(false);
-
-  const hasShip = enabledSteps.has('gm_sm_ship');
-  const hasLaser = enabledSteps.has('gm_sm_laser');
-  const hasMeteor = enabledSteps.has('gm_sm_meteor');
-  const hasMission = enabledSteps.has('gm_sm_mission');
-
-  const gameOver = lives <= 0;
-
-  useEffect(() => {
-    if (!running || !hasMeteor || gameOver || missionWon) return;
-
-    const timer = window.setInterval(() => {
-      setEntities((prev) => {
-        const moved: SpaceEntity[] = [];
-        let hitMeteor = false;
-        let caughtStar = false;
-
-        for (const item of prev) {
-          const nextRow = item.row + 1;
-          if (nextRow === 5) {
-            if (item.lane === shipLane) {
-              if (item.kind === 'meteor') hitMeteor = true;
-              else caughtStar = true;
-            }
-          } else if (nextRow < 5) {
-            moved.push({ ...item, row: nextRow });
-          }
-        }
-
-        if (hitMeteor) {
-          soundEngine.playCrash();
-          setLives((l) => Math.max(0, l - 1));
-        }
-        if (caughtStar) {
-          soundEngine.playGemCollect();
-          setScore((s) => {
-            const nextScore = s + 20;
-            if (hasMission && nextScore >= 100) {
-              setMissionWon(true);
-              setRunning(false);
-              soundEngine.playVictory();
-            }
-            return nextScore;
-          });
-        }
-
-        // Spawn 1 new meteor or star at row 0
-        const spawnLane = Math.floor(Math.random() * 5);
-        const kind: 'meteor' | 'star' = Math.random() < 0.35 ? 'star' : 'meteor';
-        moved.push({ id: Date.now() + Math.random(), lane: spawnLane, row: 0, kind });
-        return moved;
-      });
-    }, 620);
-
-    return () => window.clearInterval(timer);
-  }, [running, hasMeteor, gameOver, missionWon, shipLane, hasMission]);
-
-  const handleRestart = () => {
-    soundEngine.playButtonClick();
-    setShipLane(2);
-    setEntities([]);
-    setScore(0);
-    setLives(3);
-    setMissionWon(false);
-    setRunning(true);
-  };
-
-  const handleFire = () => {
-    if (!hasLaser || gameOver || missionWon) return;
-    soundEngine.playBlockSnap();
-    setLaserLane(shipLane);
-    window.setTimeout(() => setLaserLane(null), 180);
-
-    setEntities((prev) => {
-      // Destroy lowest meteor in shipLane
-      const targets = prev
-        .filter((e) => e.lane === shipLane && e.kind === 'meteor')
-        .sort((a, b) => b.row - a.row);
-      if (targets.length === 0) return prev;
-      const target = targets[0];
-      setScore((s) => {
-        const nextScore = s + 15;
-        if (hasMission && nextScore >= 100) {
-          setMissionWon(true);
-          setRunning(false);
-          soundEngine.playVictory();
-        }
-        return nextScore;
-      });
-      return prev.filter((e) => e.id !== target.id);
-    });
-  };
-
-  return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between border-b-2 border-black pb-2">
-        <div className="flex items-center gap-2 font-display font-extrabold text-sm">
-          <Rocket className="w-4 h-4 text-emerald-700" />
-          <span className="truncate">{gameTitle}</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          {hasMeteor && (
-            <span className="inline-flex items-center gap-0.5 text-xs font-extrabold">
-              {[1, 2, 3].map((i) => (
-                <Heart
-                  key={i}
-                  className={`w-3.5 h-3.5 ${
-                    i <= lives ? 'fill-[#FB7185] text-black' : 'text-neutral-300'
-                  }`}
-                />
-              ))}
-            </span>
-          )}
-          <span className="px-2 py-0.5 bg-[#FFE600] border border-black font-mono text-[10px] font-extrabold">
-            {score}/{hasMission ? 100 : '∞'}
-          </span>
-        </div>
-      </div>
-
-      {!hasShip ? (
-        <div className="p-5 text-center border-2 border-dashed border-black/30 text-xs font-bold text-neutral-500">
-          Aktifkan Modul 1 (Arena Galaksi &amp; Pesawat Roket) untuk memulai misi.
-        </div>
-      ) : (
-        <>
-          {/* Space 5x6 Arena */}
-          <div className="bg-[#0F172A] border-2 border-black p-2 grid grid-cols-5 gap-1">
-            {Array.from({ length: 6 }).map((_, row) =>
-              Array.from({ length: 5 }).map((__, lane) => {
-                const isShip = row === 5 && lane === shipLane;
-                const ent = entities.find((e) => e.row === row && e.lane === lane);
-                const isBeam = laserLane === lane && row < 5;
-
-                return (
-                  <div
-                    key={`${row}-${lane}`}
-                    className={`h-9 border border-white/10 flex items-center justify-center text-lg relative ${
-                      isBeam ? 'bg-[#FFE600]/30' : 'bg-[#1E293B]/60'
-                    }`}
-                  >
-                    {isShip ? (
-                      <span>🚀</span>
-                    ) : ent ? (
-                      <span>{ent.kind === 'meteor' ? '☄️' : '⭐'}</span>
-                    ) : isBeam ? (
-                      <span className="text-xs text-[#FFE600]">⚡</span>
-                    ) : null}
-                  </div>
-                );
-              })
-            )}
-          </div>
-
-          {/* Controls */}
-          <div className="grid grid-cols-4 gap-1.5">
-            <button
-              type="button"
-              disabled={!hasLaser || gameOver || missionWon}
-              onClick={() => {
-                soundEngine.playStep();
-                setShipLane((l) => Math.max(0, l - 1));
-              }}
-              className="py-2 bg-[#38BDF8] border-2 border-black font-extrabold text-xs flex items-center justify-center cursor-pointer disabled:opacity-40"
-              aria-label="Kiri"
-            >
-              <ArrowLeft className="w-4 h-4" />
-            </button>
-            <button
-              type="button"
-              disabled={!hasLaser || gameOver || missionWon}
-              onClick={handleFire}
-              className="py-2 bg-[#FFE600] border-2 border-black font-extrabold text-xs inline-flex items-center justify-center gap-1 cursor-pointer disabled:opacity-40 col-span-2"
-            >
-              <Zap className="w-3.5 h-3.5" />
-              Tembak Laser
-            </button>
-            <button
-              type="button"
-              disabled={!hasLaser || gameOver || missionWon}
-              onClick={() => {
-                soundEngine.playStep();
-                setShipLane((l) => Math.min(4, l + 1));
-              }}
-              className="py-2 bg-[#38BDF8] border-2 border-black font-extrabold text-xs flex items-center justify-center cursor-pointer disabled:opacity-40"
-              aria-label="Kanan"
-            >
-              <ArrowRight className="w-4 h-4" />
-            </button>
-          </div>
-
-          {hasMeteor ? (
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  if (gameOver || missionWon) handleRestart();
-                  else setRunning((r) => !r);
-                }}
-                className="flex-1 py-2 bg-[#4ADE80] border-2 border-black text-xs font-extrabold inline-flex items-center justify-center gap-1.5 cursor-pointer"
-              >
-                {running ? (
-                  <>
-                    <Pause className="w-3.5 h-3.5" />
-                    Jeda Misi
-                  </>
-                ) : (
-                  <>
-                    <Play className="w-3.5 h-3.5 fill-black" />
-                    {gameOver || missionWon ? 'Main Ulang Misi' : 'Mulai Gelombang Meteor'}
-                  </>
-                )}
-              </button>
-            </div>
-          ) : (
-            <div className="p-2 bg-neutral-100 border border-dashed border-black/40 text-[11px] font-bold text-neutral-500">
-              🔒 Aktifkan Modul 3 untuk menghadirkan Gelombang Meteor &amp; Bintang.
-            </div>
-          )}
-
-          {missionWon && (
-            <div className="p-2.5 bg-[#4ADE80] border-2 border-black text-xs font-extrabold text-center">
-              🏆 MISI GALAKSI BERHASIL! Skor mencapai {score} poin!
-            </div>
-          )}
-          {gameOver && (
-            <div className="p-2.5 bg-[#FB7185] border-2 border-black text-xs font-extrabold text-center">
-              Pesawat terkena meteor! Klik "Main Ulang Misi" untuk mencoba lagi.
-            </div>
-          )}
-        </>
-      )}
-    </div>
-  );
-};
-
-// ==================== MAIN GAME MAKER WORKSPACE ====================
 
 export const GameMakerWorkspace: React.FC<Props> = ({
   hasAccess,
-  requestedGameMaker = false,
+  requestedGameMaker,
   isAdminPreview = false,
   initialProjectId = null,
   completedProgressMap,
-  adminPhone = '',
+  adminPhone,
   adminContactName = 'Admin CodeSpark',
   onRequestUpgrade,
   onProjectComplete,
   onOpenCertificates,
 }) => {
-  const [activeProjectId, setActiveProjectId] = useState<GameMakerProjectId | null>(
+  const [selectedProjectId, setSelectedProjectId] = useState<GameMakerProjectId | null>(
     initialProjectId
   );
-  const [builderMode, setBuilderMode] = useState<'blocks' | 'code'>('blocks');
-  const [gameTitle, setGameTitle] = useState('');
-  const [enabledStepIds, setEnabledStepIds] = useState<string[]>([]);
-  const [codeText, setCodeText] = useState('');
-  const [validationError, setValidationError] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [victoryInfo, setVictoryInfo] = useState<{
-    projectTitle: string;
-    newCertificate: CertificateRecord | null;
-    nextProject: GameMakerProjectDef | null;
-  } | null>(null);
 
+  // Sync if parent explicitly passes initialProjectId
   useEffect(() => {
     if (initialProjectId) {
-      setActiveProjectId(initialProjectId);
+      setSelectedProjectId(initialProjectId);
     }
   }, [initialProjectId]);
 
-  const activeProject = activeProjectId ? getGameMakerProjectById(activeProjectId) || null : null;
+  const [activeTab, setActiveTab] = useState<EditorTab>('blocks');
+  const [program, setProgram] = useState<ArcadeBlockProgram>(() =>
+    cloneProgram(GAME_MAKER_PROJECTS[0].arcadeStarter)
+  );
+  const [history, setHistory] = useState<ArcadeBlockProgram[]>([]);
+  const [future, setFuture] = useState<ArcadeBlockProgram[]>([]);
+  const [gameTitle, setGameTitle] = useState<string>(GAME_MAKER_PROJECTS[0].defaultGameName);
+  const [pythonDraft, setPythonDraft] = useState<string>('');
+  const [pythonDirty, setPythonDirty] = useState(false);
+  const [pythonErrors, setPythonErrors] = useState<Array<{ line: number; message: string }>>([]);
 
-  useEffect(() => {
-    if (!activeProject) return;
-    const prevRecord = completedProgressMap.get(activeProject.id);
-    const defaultSteps = prevRecord
-      ? activeProject.steps.map((s) => s.id)
-      : [...activeProject.starterEnabledStepIds];
-    setGameTitle(activeProject.defaultGameName);
-    setEnabledStepIds(defaultSteps);
-    setCodeText(
-      prevRecord?.codeSubmitted ||
-        buildGameCodeFromSteps(activeProject, activeProject.defaultGameName, defaultSteps)
-    );
-    setValidationError(null);
-    setVictoryInfo(null);
-    setBuilderMode('blocks');
-  }, [activeProjectId]);
+  // Toolbox & Flyout state (matches MakeCode Arcade middle panel)
+  const [toolboxCollapsed, setToolboxCollapsed] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState<ArcadeCategoryId | null>('game');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [activeContainerId, setActiveContainerId] = useState<string>('im_start');
+  const [zoom, setZoom] = useState<number>(1);
 
-  const completedCount = useMemo(
-    () => GAME_MAKER_PROJECTS.filter((p) => completedProgressMap.has(p.id)).length,
-    [completedProgressMap]
+  // Pixel Art Custom Sprites
+  const [customSprites, setCustomSprites] = useState<Record<string, PixelSpriteGrid>>({});
+  const [selectedAssetSpriteId, setSelectedAssetSpriteId] = useState<string>('rocket');
+
+  // UI Helpers & HUD
+  const [showMissionGuide, setShowMissionGuide] = useState(false);
+  const [hudSnapshot, setHudSnapshot] = useState<ArcadeHudSnapshot | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [victoryModal, setVictoryModal] = useState<{
+    project: GameMakerProjectDef;
+    newCertificate: CertificateRecord | null;
+  } | null>(null);
+
+  const selectedProject = useMemo(
+    () => (selectedProjectId ? getGameMakerProjectById(selectedProjectId) || null : null),
+    [selectedProjectId]
   );
 
-  const totalStars = useMemo(
-    () =>
-      GAME_MAKER_PROJECTS.reduce(
-        (sum, p) => sum + (completedProgressMap.get(p.id)?.stars || 0),
-        0
-      ),
-    [completedProgressMap]
+  const isProjectUnlocked = useCallback(
+    (project: GameMakerProjectDef) => {
+      if (isAdminPreview) return true;
+      if (project.order === 1) return true;
+      const prev = GAME_MAKER_PROJECTS.find((p) => p.order === project.order - 1);
+      if (!prev) return true;
+      return completedProgressMap.has(prev.id);
+    },
+    [completedProgressMap, isAdminPreview]
   );
 
-  const isProjectUnlocked = (project: GameMakerProjectDef): boolean => {
-    if (isAdminPreview) return true;
-    if (project.order === 1) return true;
-    const prev = GAME_MAKER_PROJECTS.find((p) => p.order === project.order - 1);
-    return prev ? completedProgressMap.has(prev.id) : true;
-  };
+  const showToast = useCallback((msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => {
+      setToastMessage((curr) => (curr === msg ? null : curr));
+    }, 2600);
+  }, []);
 
-  const effectiveEnabledSteps = useMemo(() => {
-    if (!activeProject) return new Set<string>();
-    if (builderMode === 'blocks') return new Set(enabledStepIds);
-    const detected = new Set<string>();
-    activeProject.steps.forEach((step) => {
-      const match = step.codeSnippet.match(/"([^"]+)"/);
-      const featureKey = match ? match[1] : step.codeSnippet;
-      if (codeText.includes(featureKey) || codeText.includes(step.codeSnippet)) {
-        detected.add(step.id);
+  // Load project starter/solution when opening a project
+  const openProject = useCallback(
+    (project: GameMakerProjectDef) => {
+      const alreadyDone = completedProgressMap.has(project.id);
+      const initialProg = cloneProgram(
+        alreadyDone ? project.arcadeSolution : project.arcadeStarter
+      );
+      setSelectedProjectId(project.id);
+      setProgram(initialProg);
+      setHistory([]);
+      setFuture([]);
+      setGameTitle(project.defaultGameName);
+      setActiveContainerId(initialProg.containers[0]?.id || '');
+      setPythonDraft(arcadeProgramToPython(initialProg, project.defaultGameName));
+      setPythonDirty(false);
+      setPythonErrors([]);
+      setActiveTab('blocks');
+      setSelectedCategory('sprites');
+      setShowMissionGuide(false);
+      setZoom(1);
+
+      // Select primary hero sprite for Assets editor
+      const playerBlk = initialProg.containers
+        .flatMap((c) => c.blocks)
+        .find((b) => b.type === 'create_player');
+      if (playerBlk && typeof playerBlk.params.spriteId === 'string') {
+        setSelectedAssetSpriteId(playerBlk.params.spriteId);
       }
-    });
-    return detected;
-  }, [activeProject, builderMode, enabledStepIds, codeText]);
+    },
+    [completedProgressMap]
+  );
 
-  const handleToggleStep = (stepId: string) => {
-    if (!activeProject) return;
-    soundEngine.playBlockSnap();
-    setValidationError(null);
-    setEnabledStepIds((prev) => {
-      const next = prev.includes(stepId)
-        ? prev.filter((id) => id !== stepId)
-        : [...prev, stepId];
-      setCodeText(buildGameCodeFromSteps(activeProject, gameTitle, next));
-      return next;
-    });
+  // If initialized directly into a project via initialProjectId
+  useEffect(() => {
+    if (initialProjectId) {
+      const proj = getGameMakerProjectById(initialProjectId);
+      if (proj) {
+        openProject(proj);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialProjectId]);
+
+  // Keep Python code synced whenever Blocks change (if not currently mid-editing dirty python)
+  useEffect(() => {
+    if (!pythonDirty) {
+      setPythonDraft(arcadeProgramToPython(program, gameTitle));
+    }
+  }, [program, gameTitle, pythonDirty]);
+
+  const commitProgram = useCallback(
+    (next: ArcadeBlockProgram) => {
+      setHistory((prev) => [...prev.slice(-24), cloneProgram(program)]);
+      setFuture([]);
+      setProgram(next);
+      setPythonDirty(false);
+      setPythonErrors([]);
+    },
+    [program]
+  );
+
+  const handleUndo = () => {
+    if (history.length === 0) return;
+    const prev = history[history.length - 1];
+    setFuture((f) => [cloneProgram(program), ...f]);
+    setHistory((h) => h.slice(0, -1));
+    setProgram(prev);
+    setPythonDirty(false);
   };
 
-  const handleGameTitleChange = (val: string) => {
-    setGameTitle(val);
-    if (activeProject && builderMode === 'blocks') {
-      setCodeText(buildGameCodeFromSteps(activeProject, val, enabledStepIds));
+  const handleRedo = () => {
+    if (future.length === 0) return;
+    const next = future[0];
+    setHistory((h) => [...h, cloneProgram(program)]);
+    setFuture((f) => f.slice(1));
+    setProgram(next);
+    setPythonDirty(false);
+  };
+
+  // Add block or event container from flyout
+  const handleInsertTemplate = useCallback(
+    (tpl: FlyoutTemplate, targetContainerId?: string) => {
+      const next = cloneProgram(program);
+
+      if (tpl.kind === 'event' && tpl.eventTemplate) {
+        const newId = makeBlockId('ev');
+        next.containers.push({
+          id: newId,
+          eventType: tpl.eventTemplate.eventType,
+          params: { ...tpl.eventTemplate.params },
+          blocks: tpl.eventTemplate.blocks.map((b) => ({
+            ...b,
+            id: makeBlockId('blk'),
+            params: { ...b.params },
+          })),
+        });
+        commitProgram(next);
+        setActiveContainerId(newId);
+        playArcadeSfx('ba_ding', false);
+        showToast(`Event ditambahkan: ${tpl.label}`);
+        return;
+      }
+
+      if (tpl.kind === 'statement' && tpl.statementTemplate) {
+        const destId = targetContainerId || activeContainerId || next.containers[0]?.id;
+        let container = next.containers.find((c) => c.id === destId);
+        if (!container) {
+          container = next.containers[0];
+        }
+        if (container) {
+          container.blocks.push({
+            id: makeBlockId('blk'),
+            type: tpl.statementTemplate.type,
+            params: { ...tpl.statementTemplate.params },
+          });
+          commitProgram(next);
+          playArcadeSfx('ba_ding', false);
+        }
+      }
+    },
+    [activeContainerId, commitProgram, program, showToast]
+  );
+
+  const handleDropTemplateIntoContainer = useCallback(
+    (containerId: string, templateId: string) => {
+      const tpl = ARCADE_FLYOUT_TEMPLATES.find((t) => t.id === templateId);
+      if (!tpl) return;
+      handleInsertTemplate(tpl, containerId);
+      setActiveContainerId(containerId);
+    },
+    [handleInsertTemplate]
+  );
+
+  const handleUpdateContainerParam = (
+    containerId: string,
+    key: string,
+    value: string | number | boolean
+  ) => {
+    const next = cloneProgram(program);
+    const c = next.containers.find((item) => item.id === containerId);
+    if (!c) return;
+    c.params[key] = value;
+    commitProgram(next);
+  };
+
+  const handleRemoveContainer = (containerId: string) => {
+    const next = cloneProgram(program);
+    next.containers = next.containers.filter((c) => c.id !== containerId);
+    commitProgram(next);
+    if (activeContainerId === containerId) {
+      setActiveContainerId(next.containers[0]?.id || '');
     }
   };
 
-  const handleEnableAllSteps = () => {
-    if (!activeProject) return;
-    soundEngine.playBlockSnap();
-    const allIds = activeProject.steps.map((s) => s.id);
-    setEnabledStepIds(allIds);
-    setCodeText(buildGameCodeFromSteps(activeProject, gameTitle, allIds));
-    setValidationError(null);
+  const handleUpdateBlockParam = (
+    containerId: string,
+    blockId: string,
+    key: string,
+    value: string | number | boolean
+  ) => {
+    const next = cloneProgram(program);
+    const c = next.containers.find((item) => item.id === containerId);
+    const b = c?.blocks.find((item) => item.id === blockId);
+    if (!b) return;
+    b.params[key] = value;
+    commitProgram(next);
+  };
+
+  const handleMoveBlock = (containerId: string, blockId: string, dir: -1 | 1) => {
+    const next = cloneProgram(program);
+    const c = next.containers.find((item) => item.id === containerId);
+    if (!c) return;
+    const idx = c.blocks.findIndex((b) => b.id === blockId);
+    if (idx < 0) return;
+    const targetIdx = idx + dir;
+    if (targetIdx < 0 || targetIdx >= c.blocks.length) return;
+    const [removed] = c.blocks.splice(idx, 1);
+    c.blocks.splice(targetIdx, 0, removed);
+    commitProgram(next);
+  };
+
+  const handleRemoveBlock = (containerId: string, blockId: string) => {
+    const next = cloneProgram(program);
+    const c = next.containers.find((item) => item.id === containerId);
+    if (!c) return;
+    c.blocks = c.blocks.filter((b) => b.id !== blockId);
+    commitProgram(next);
+  };
+
+  // Run & Sync Python Code -> Blocks & Live Handheld Simulator
+  const handleRunPython = () => {
+    const res = parseArcadePython(pythonDraft);
+    setPythonErrors(res.errors);
+    if (res.errors.length === 0) {
+      commitProgram(res.program);
+      setActiveContainerId(res.program.containers[0]?.id || '');
+      playArcadeSfx('power_up', false);
+      showToast('Kode Python berhasil dikompilasi & dijalankan di konsol!');
+    } else {
+      playArcadeSfx('zapped', false);
+      showToast(`Ada ${res.errors.length} baris Python yang perlu diperbaiki.`);
+    }
+  };
+
+  const handleLoadSolution = () => {
+    if (!selectedProject) return;
+    const sol = cloneProgram(selectedProject.arcadeSolution);
+    commitProgram(sol);
+    setActiveContainerId(sol.containers[0]?.id || '');
+    playArcadeSfx('magic_wand', false);
+    showToast('Kode lengkap proyek dimuat! Coba mainkan di konsol kiri.');
   };
 
   const handleResetProject = () => {
-    if (!activeProject) return;
-    soundEngine.playButtonClick();
-    const starter = [...activeProject.starterEnabledStepIds];
-    setGameTitle(activeProject.defaultGameName);
-    setEnabledStepIds(starter);
-    setCodeText(buildGameCodeFromSteps(activeProject, activeProject.defaultGameName, starter));
-    setValidationError(null);
-    setVictoryInfo(null);
+    if (!selectedProject) return;
+    const starter = cloneProgram(selectedProject.arcadeStarter);
+    commitProgram(starter);
+    setActiveContainerId(starter.containers[0]?.id || '');
+    showToast('Workspace direset ke template awal.');
   };
 
-  const handleRunAndComplete = async () => {
-    if (!activeProject) return;
-    const missing = activeProject.steps.filter((s) => !effectiveEnabledSteps.has(s.id));
-    if (missing.length > 0) {
-      soundEngine.playCrash();
-      setValidationError(
-        `Masih ada ${missing.length} modul game belum diaktifkan: ${missing
-          .map((m) => m.title)
-          .join(', ')}. Aktifkan seluruh 4 modul agar game lengkap & siap diselesaikan!`
-      );
+  const handleDownloadPython = () => {
+    const code = pythonDirty ? pythonDraft : arcadeProgramToPython(program, gameTitle);
+    const blob = new Blob([code], { type: 'text/x-python;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${(gameTitle || 'codespark_arcade').toLowerCase().replace(/[^a-z0-9]+/g, '_')}.py`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast('File Python (.py) berhasil diunduh!');
+  };
+
+  // Mission checks evaluation
+  const missionResults = useMemo(() => {
+    if (!selectedProject) return [];
+    return selectedProject.missionChecks.map((m) => ({
+      ...m,
+      passed: m.check(program),
+    }));
+  }, [program, selectedProject]);
+
+  const passedCount = missionResults.filter((m) => m.passed).length;
+  const allMissionsPassed =
+    selectedProject !== null && passedCount === selectedProject.missionChecks.length;
+
+  const handleSubmitProject = async () => {
+    if (!selectedProject) return;
+    if (!allMissionsPassed && !isAdminPreview) {
+      setShowMissionGuide(true);
+      showToast('Lengkapi semua misi blok/Python dulu atau klik "Pasang Kode Lengkap".');
       return;
     }
 
-    setValidationError(null);
-    setSaving(true);
+    setSubmitting(true);
     try {
-      const finalCode =
-        builderMode === 'code'
-          ? codeText
-          : buildGameCodeFromSteps(activeProject, gameTitle, enabledStepIds);
+      const codeSubmitted = pythonDirty ? pythonDraft : arcadeProgramToPython(program, gameTitle);
+      const stars: 1 | 2 | 3 =
+        allMissionsPassed && (hudSnapshot?.status === 'win' || hudSnapshot?.hasPlayed)
+          ? 3
+          : allMissionsPassed
+            ? 3
+            : 2;
       const res = await onProjectComplete({
-        projectId: activeProject.id,
-        stars: 3,
-        codeSubmitted: finalCode,
+        projectId: selectedProject.id,
+        stars,
+        codeSubmitted,
       });
-      soundEngine.playVictory();
-      const nextProj =
-        GAME_MAKER_PROJECTS.find((p) => p.order === activeProject.order + 1) || null;
-      setVictoryInfo({
-        projectTitle: activeProject.title,
+      playArcadeSfx('power_up', false);
+      setVictoryModal({
+        project: selectedProject,
         newCertificate: res.newCertificate,
-        nextProject: nextProj,
       });
-    } catch (err) {
-      soundEngine.playCrash();
-      setValidationError(
-        err instanceof Error ? err.message : 'Gagal menyimpan progres proyek Game Maker.'
-      );
     } finally {
-      setSaving(false);
+      setSubmitting(false);
     }
   };
 
-  // ==================== LOCKED ACCESS GATE ====================
+  // Filter flyout blocks by selected category or search query
+  const visibleFlyoutTemplates = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (q) {
+      return ARCADE_FLYOUT_TEMPLATES.filter(
+        (t) =>
+          t.label.toLowerCase().includes(q) ||
+          t.description.toLowerCase().includes(q) ||
+          t.category.toLowerCase().includes(q)
+      );
+    }
+    if (!selectedCategory) return [];
+    return ARCADE_FLYOUT_TEMPLATES.filter((t) => t.category === selectedCategory);
+  }, [searchQuery, selectedCategory]);
+
+  // ==================== ACCESS GATE (WHEN LOCKED) ====================
   if (!hasAccess && !isAdminPreview) {
-    const waUrl = formatWhatsAppUrl(
-      adminPhone,
-      `Halo ${adminContactName}, saya ingin mengaktifkan akses Program Panduan Game Maker (5 Game: Image Match, Memory Card, Color Puzzle, Save the Polar Bear, Space Mission) di akun CodeSpark saya.`
-    );
+    const waHref = adminPhone
+      ? formatWhatsAppUrl(
+          adminPhone,
+          'Halo Admin CodeSpark, saya ingin membuka akses kelas Game Maker Arcade Lab.'
+        )
+      : '';
 
     return (
-      <main className="max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 space-y-6 text-black">
-        <div className="neo-card bg-[#38BDF8] p-6 sm:p-8 space-y-5">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="inline-flex items-center gap-1.5 bg-white border-2 border-black px-3 py-1 text-xs font-extrabold">
-              <Lock className="w-3.5 h-3.5" />
-              Program Panduan Game Maker · Terkunci
+      <div className="max-w-3xl mx-auto my-6 bg-white border-[3px] border-[#0f172a] rounded-3xl p-6 sm:p-8 shadow-[6px_6px_0px_#0f172a] text-center">
+        <div className="w-16 h-16 mx-auto rounded-2xl bg-[#276C73] text-white flex items-center justify-center border-2 border-[#0f172a] shadow-[3px_3px_0px_#0f172a] mb-4">
+          <Lock className="w-8 h-8" />
+        </div>
+        <h2 className="text-2xl font-black text-slate-900">
+          Program Game Maker Arcade Terkunci
+        </h2>
+        <p className="text-sm text-slate-600 mt-2 max-w-xl mx-auto">
+          Bangun 5 game arcade piksel dengan <b>Blocks</b>, <b>Python</b>, dan <b>Sprite Editor</b>{' '}
+          seperti MakeCode Arcade. Hubungi Admin atau minta pembukaan akses untuk mulai berkarya!
+        </p>
+
+        <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+          {onRequestUpgrade && (
+            <button
+              type="button"
+              onClick={onRequestUpgrade}
+              disabled={requestedGameMaker}
+              className="px-5 py-3 rounded-xl font-extrabold text-sm border-2 border-[#0f172a] shadow-[3px_3px_0px_#0f172a] bg-[#FFE600] hover:bg-amber-300 text-slate-900 disabled:opacity-60 cursor-pointer flex items-center gap-2"
+            >
+              <Sparkles className="w-4 h-4" />
+              {requestedGameMaker ? 'Permintaan Akses Terkirim' : 'Minta Buka Akses Game Maker'}
+            </button>
+          )}
+          {waHref && (
+            <a
+              href={waHref}
+              target="_blank"
+              rel="noreferrer"
+              className="px-5 py-3 rounded-xl font-extrabold text-sm border-2 border-[#0f172a] shadow-[3px_3px_0px_#0f172a] bg-emerald-500 hover:bg-emerald-600 text-white flex items-center gap-2"
+            >
+              <MessageCircle className="w-4 h-4" />
+              Chat {adminContactName}
+            </a>
+          )}
+          {adminPhone && !waHref && (
+            <span className="px-4 py-2 rounded-xl bg-slate-100 text-slate-700 text-xs font-bold flex items-center gap-1.5">
+              <Phone className="w-3.5 h-3.5" />
+              {adminPhone}
             </span>
-            {requestedGameMaker && (
-              <span className="inline-flex items-center gap-1.5 bg-[#FFE600] border-2 border-black px-3 py-1 text-xs font-extrabold">
-                <Sparkles className="w-3.5 h-3.5" />
-                Sudah Dipilih Saat Pendaftaran · Menunggu Aktivasi Admin
-              </span>
-            )}
-          </div>
-
-          <div className="space-y-2 max-w-3xl">
-            <h1 className="font-display text-2xl sm:text-4xl font-extrabold leading-tight">
-              Ciptakan 5 Game Seru di Program Game Maker!
-            </h1>
-            <p className="text-sm sm:text-base font-semibold text-neutral-900 leading-relaxed">
-              {requestedGameMaker
-                ? 'Permintaan program Game Maker Anda sudah tercatat. Admin dapat langsung membuka akses manual pada akun Anda, atau masukkan Kode Akses yang menyertakan Program Game Maker.'
-                : 'Program Game Maker mengajarkan perancangan 5 game interaktif secara bertahap (Image Match hingga Space Mission). Minta Admin membuka akses manual di akun Anda atau gunakan Kode Akses Game Maker.'}
-            </p>
-          </div>
-
-          <div className="flex flex-wrap gap-3">
-            {onRequestUpgrade && (
-              <button
-                type="button"
-                onClick={() => {
-                  soundEngine.playButtonClick();
-                  onRequestUpgrade();
-                }}
-                className="neo-btn bg-black text-white px-5 py-3 text-sm font-extrabold inline-flex items-center gap-2 cursor-pointer"
-              >
-                <KeyRound className="w-4 h-4" />
-                Aktifkan dengan Kode Akses
-              </button>
-            )}
-            {waUrl ? (
-              <a
-                href={waUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="neo-btn bg-[#4ADE80] px-5 py-3 text-sm font-extrabold inline-flex items-center gap-2"
-              >
-                <MessageCircle className="w-4 h-4" />
-                Hubungi Admin via WhatsApp
-              </a>
-            ) : (
-              <div className="inline-flex items-center gap-2 px-4 py-2.5 bg-white border-2 border-black text-xs font-extrabold">
-                <Phone className="w-4 h-4" />
-                Hubungi {adminContactName} untuk aktivasi manual
-              </div>
-            )}
-          </div>
+          )}
         </div>
-
-        {/* Locked Roadmap Preview */}
-        <div className="space-y-3">
-          <h2 className="font-display text-xl font-extrabold">
-            Pratinjau 5 Game Bertahap Game Maker
-          </h2>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
-            {GAME_MAKER_PROJECTS.map((proj) => {
-              const Icon = getGameIcon(proj.id);
-              return (
-                <div key={proj.id} className="neo-card bg-neutral-100 p-5 opacity-85 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span
-                      className="px-2.5 py-1 border-2 border-black font-mono text-xs font-extrabold"
-                      style={{ backgroundColor: proj.accentColor }}
-                    >
-                      Game 0{proj.order}
-                    </span>
-                    <Lock className="w-4 h-4 text-neutral-600" />
-                  </div>
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-10 h-10 bg-white border-2 border-black flex items-center justify-center shrink-0">
-                      <Icon className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <h3 className="font-display text-lg font-extrabold leading-tight">
-                        {proj.title}
-                      </h3>
-                      <p className="text-xs text-neutral-600">{proj.concept}</p>
-                    </div>
-                  </div>
-                  <p className="text-xs text-neutral-700 leading-relaxed">{proj.subtitle}</p>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </main>
+      </div>
     );
   }
 
-  // ==================== BUILDER + LIVE PLAY VIEW ====================
-  if (activeProject) {
-    const Icon = getGameIcon(activeProject.id);
-    const activeStepsCount = effectiveEnabledSteps.size;
-    const isCompleted = completedProgressMap.has(activeProject.id);
+  // ==================== PROJECT HUB SCREEN ====================
+  if (!selectedProject) {
+    const completedCount = GAME_MAKER_PROJECTS.filter((p) =>
+      completedProgressMap.has(p.id)
+    ).length;
 
     return (
-      <main className="max-w-[1440px] w-full mx-auto p-4 sm:p-6 space-y-5 text-black">
-        {/* Top Game Bar */}
-        <div className="neo-card bg-white p-4 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex flex-wrap items-center gap-3">
-            <button
-              type="button"
-              onClick={() => {
-                soundEngine.playButtonClick();
-                setActiveProjectId(null);
-              }}
-              className="neo-btn bg-[#FFFDF7] px-3.5 py-2 text-xs font-extrabold inline-flex items-center gap-1.5 cursor-pointer"
-            >
-              <ArrowLeft className="w-4 h-4" />
-              Semua Game
-            </button>
-            <div className="flex items-center gap-2.5">
-              <div
-                className="w-10 h-10 border-2 border-black shadow-[2px_2px_0px_0px_#000] flex items-center justify-center shrink-0"
-                style={{ backgroundColor: activeProject.accentColor }}
-              >
-                <Icon className="w-5 h-5" />
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="font-mono text-[11px] font-extrabold bg-black text-white px-1.5 py-0.5">
-                    GAME 0{activeProject.order}/05
-                  </span>
-                  {isAdminPreview && (
-                    <span className="font-mono text-[11px] font-extrabold bg-[#FFE600] border border-black px-1.5 py-0.5">
-                      PRATINJAU ADMIN
-                    </span>
-                  )}
-                  {isCompleted && (
-                    <span className="font-mono text-[11px] font-extrabold bg-[#4ADE80] border border-black px-1.5 py-0.5 inline-flex items-center gap-1">
-                      <CheckCircle2 className="w-3 h-3" />
-                      SELESAI
-                    </span>
-                  )}
-                </div>
-                <h1 className="font-display text-lg sm:text-xl font-extrabold">
-                  {activeProject.title}
-                </h1>
-              </div>
-            </div>
-          </div>
-
-          {/* Quick Game Switcher */}
-          <div className="flex items-center gap-1.5 flex-wrap">
-            {GAME_MAKER_PROJECTS.map((proj) => {
-              const unlocked = isProjectUnlocked(proj);
-              const active = proj.id === activeProject.id;
-              const done = completedProgressMap.has(proj.id);
-              return (
-                <button
-                  key={proj.id}
-                  type="button"
-                  disabled={!unlocked}
-                  onClick={() => {
-                    soundEngine.playButtonClick();
-                    setActiveProjectId(proj.id);
-                  }}
-                  title={
-                    unlocked
-                      ? `Game ${proj.order}: ${proj.title}`
-                      : `Terkunci — Selesaikan Game ${proj.order - 1} dulu`
-                  }
-                  className={`px-2.5 py-1.5 border-2 border-black font-mono text-xs font-extrabold inline-flex items-center gap-1 ${
-                    active
-                      ? 'bg-[#FFE600] shadow-[2px_2px_0px_0px_#000] cursor-pointer'
-                      : unlocked
-                        ? done
-                          ? 'bg-[#4ADE80] cursor-pointer'
-                          : 'bg-white cursor-pointer hover:bg-neutral-100'
-                        : 'bg-neutral-200 text-neutral-400 cursor-not-allowed'
-                  }`}
-                >
-                  {!unlocked && <Lock className="w-3 h-3" />}
-                  G{proj.order}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Victory Banner */}
-        {victoryInfo && (
-          <div className="neo-card bg-[#4ADE80] p-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div className="space-y-1">
-              <div className="font-display text-xl font-extrabold flex items-center gap-2">
-                <Trophy className="w-5 h-5" />
-                Game {victoryInfo.projectTitle} Berhasil Diselesaikan! (★★★)
-              </div>
-              <p className="text-xs sm:text-sm font-bold text-neutral-900">
-                {victoryInfo.nextProject
-                  ? `Keren! Game berikutnya (${victoryInfo.nextProject.title}) kini sudah terbuka.`
-                  : 'Luar biasa! Anda telah menuntaskan seluruh 5 proyek Game Maker!'}
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-2 shrink-0">
-              {victoryInfo.newCertificate && onOpenCertificates && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    soundEngine.playButtonClick();
-                    onOpenCertificates();
-                  }}
-                  className="neo-btn bg-[#FFE600] px-4 py-2.5 text-xs sm:text-sm font-extrabold inline-flex items-center gap-1.5 cursor-pointer"
-                >
-                  <Award className="w-4 h-4" />
-                  Lihat Sertifikat Game Maker
-                </button>
-              )}
-              {victoryInfo.nextProject ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    soundEngine.playButtonClick();
-                    setActiveProjectId(victoryInfo.nextProject!.id);
-                  }}
-                  className="neo-btn bg-black text-white px-4 py-2.5 text-xs sm:text-sm font-extrabold inline-flex items-center gap-1.5 cursor-pointer"
-                >
-                  Lanjut ke {victoryInfo.nextProject.shortTitle}
-                  <ArrowRight className="w-4 h-4" />
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => setActiveProjectId(null)}
-                  className="neo-btn bg-white px-4 py-2.5 text-xs sm:text-sm font-extrabold cursor-pointer"
-                >
-                  Kembali ke Peta Game Maker
-                </button>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Split-Screen Game Builder + Live Playable Arcade Frame */}
-        <div className="grid lg:grid-cols-12 gap-6 items-start">
-          {/* LEFT: Guided Game Builder */}
-          <div className="lg:col-span-7 neo-card bg-white p-5 space-y-5">
+      <div className="space-y-5">
+        {/* Teal MakeCode-Inspired Hub Header */}
+        <div className="rounded-2xl overflow-hidden border-[3px] border-[#0f172a] shadow-[5px_5px_0px_#0f172a] bg-gradient-to-r from-[#1D565C] via-[#276C73] to-[#2e858d] text-white p-5 sm:p-6">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div className="space-y-1.5">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <span className="text-xs font-extrabold px-2 py-0.5 bg-[#FFFDF7] border-2 border-black">
-                  Konsep: {activeProject.concept}
-                </span>
-                <span className="font-mono text-xs font-extrabold tabular-nums">
-                  {activeStepsCount}/{activeProject.steps.length} Modul Game Aktif
-                </span>
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/15 border border-white/25 text-[11px] font-extrabold tracking-wide">
+                <Gamepad2 className="w-3.5 h-3.5 text-[#FFE600]" />
+                CODESPARK ARCADE STUDIO · BLOCKS + PYTHON + ASSETS
               </div>
-              <p className="text-xs sm:text-sm text-neutral-700 leading-relaxed">
-                {activeProject.overview}
+              <h2 className="text-2xl sm:text-3xl font-black tracking-tight">
+                Game Maker Arcade Lab
+              </h2>
+              <p className="text-xs sm:text-sm text-teal-50/95 max-w-2xl">
+                Rakit 5 game piksel 60 FPS menggunakan blok visual & kode Python ala MakeCode
+                Arcade, gambar sprite 16×16 milikmu sendiri, lalu mainkan langsung di konsol handheld!
               </p>
             </div>
 
-            <div className="grid sm:grid-cols-2 gap-3 pt-2 border-t-2 border-black/15">
-              <div>
-                <label htmlFor="game-maker-title" className="block text-xs font-extrabold mb-1">
-                  Judul Game Anda
-                </label>
-                <input
-                  id="game-maker-title"
-                  type="text"
-                  value={gameTitle}
-                  onChange={(e) => handleGameTitleChange(e.target.value)}
-                  maxLength={32}
-                  className="neo-input w-full px-3 py-2 text-sm font-bold"
+            <div className="bg-black/25 backdrop-blur-sm rounded-xl px-4 py-3 border border-white/20 min-w-[200px]">
+              <div className="text-[11px] font-bold uppercase text-teal-100">
+                Progres Game Maker
+              </div>
+              <div className="flex items-baseline gap-2 mt-0.5">
+                <span className="text-2xl font-black text-[#FFE600]">
+                  {completedCount}/{GAME_MAKER_PROJECTS.length}
+                </span>
+                <span className="text-xs font-bold text-teal-100">Proyek Tuntas</span>
+              </div>
+              <div className="w-full h-2 rounded-full bg-black/30 mt-2 overflow-hidden">
+                <div
+                  className="h-full bg-[#4ADE80] transition-all"
+                  style={{ width: `${(completedCount / GAME_MAKER_PROJECTS.length) * 100}%` }}
                 />
               </div>
-
-              <div>
-                <span className="block text-xs font-extrabold mb-1">Mode Perakitan Game</span>
-                <div className="grid grid-cols-2 gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      soundEngine.playButtonClick();
-                      setBuilderMode('blocks');
-                    }}
-                    className={`py-2 px-2 border-2 border-black text-xs font-extrabold inline-flex items-center justify-center gap-1 cursor-pointer ${
-                      builderMode === 'blocks' ? 'bg-[#FFE600]' : 'bg-white'
-                    }`}
-                  >
-                    <Layers className="w-3.5 h-3.5" />
-                    Blok Mekanik
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      soundEngine.playButtonClick();
-                      setBuilderMode('code');
-                    }}
-                    className={`py-2 px-2 border-2 border-black text-xs font-extrabold inline-flex items-center justify-center gap-1 cursor-pointer ${
-                      builderMode === 'code' ? 'bg-[#38BDF8]' : 'bg-white'
-                    }`}
-                  >
-                    <Code2 className="w-3.5 h-3.5" />
-                    Kode JS
-                  </button>
-                </div>
-              </div>
             </div>
+          </div>
 
-            {builderMode === 'blocks' ? (
-              <div className="space-y-2.5">
-                <div className="flex items-center justify-between gap-2">
-                  <h2 className="font-display font-extrabold text-sm">
-                    Aktifkan 4 Modul Mekanik Game Secara Bertahap:
-                  </h2>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={handleEnableAllSteps}
-                      className="text-xs font-extrabold underline cursor-pointer hover:text-neutral-600"
+          {isAdminPreview && (
+            <div className="mt-4 inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-amber-400 text-slate-950 text-xs font-extrabold">
+              <Unlock className="w-3.5 h-3.5" />
+              Mode Pratinjau Admin/Instruktur: Semua 5 Proyek Arcade Terbuka Bebas
+            </div>
+          )}
+        </div>
+
+        {/* 5 Progressive Project Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          {GAME_MAKER_PROJECTS.map((project) => {
+            const Icon = getGameIcon(project.id);
+            const unlocked = isProjectUnlocked(project);
+            const completedRec = completedProgressMap.get(project.id);
+
+            return (
+              <div
+                key={project.id}
+                className={`rounded-2xl border-[2.5px] border-[#0f172a] p-5 flex flex-col justify-between transition-all ${
+                  unlocked
+                    ? 'bg-white shadow-[4px_4px_0px_#0f172a] hover:-translate-y-0.5'
+                    : 'bg-slate-100 opacity-80'
+                }`}
+              >
+                <div>
+                  <div className="flex items-start justify-between gap-3">
+                    <div
+                      className="w-12 h-12 rounded-xl border-2 border-[#0f172a] flex items-center justify-center shrink-0"
+                      style={{ backgroundColor: unlocked ? project.accentColor : '#cbd5e1' }}
                     >
-                      Aktifkan Semua
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleResetProject}
-                      className="text-xs font-bold text-neutral-600 inline-flex items-center gap-1 cursor-pointer hover:text-black"
-                    >
-                      <RotateCcw className="w-3 h-3" />
-                      Reset
-                    </button>
+                      {unlocked ? (
+                        <Icon className="w-6 h-6 text-slate-900" />
+                      ) : (
+                        <Lock className="w-5 h-5 text-slate-600" />
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="px-2.5 py-0.5 rounded-full text-[11px] font-black bg-slate-900 text-white">
+                        Proyek #{project.order}
+                      </span>
+                      {completedRec && (
+                        <span className="px-2 py-0.5 rounded-full text-[11px] font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1">
+                          <CheckCircle2 className="w-3 h-3" />
+                          {completedRec.stars}★
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  <h3 className="text-lg font-black text-slate-900 mt-3">{project.title}</h3>
+                  <p className="text-xs text-slate-600 mt-1 leading-relaxed">{project.subtitle}</p>
+                  <div className="mt-3 text-[11px] font-bold text-[#276C73] bg-[#e6f4f5] px-2.5 py-1 rounded-lg inline-block">
+                    {project.concept}
                   </div>
                 </div>
 
-                <div className="space-y-2.5">
-                  {activeProject.steps.map((step) => {
-                    const active = enabledStepIds.includes(step.id);
+                <div className="mt-5 pt-3 border-t border-slate-100">
+                  {unlocked ? (
+                    <button
+                      type="button"
+                      onClick={() => openProject(project)}
+                      className="w-full py-2.5 px-4 rounded-xl bg-[#276C73] hover:bg-[#1D565C] text-white font-extrabold text-xs border-2 border-[#0f172a] shadow-[3px_3px_0px_#0f172a] flex items-center justify-center gap-2 cursor-pointer transition-colors"
+                    >
+                      <Play className="w-4 h-4 fill-current" />
+                      {completedRec ? 'Buka & Edit di Studio Arcade' : 'Mulai Buat di Studio Arcade'}
+                    </button>
+                  ) : (
+                    <div className="w-full py-2.5 px-3 rounded-xl bg-slate-200 text-slate-600 font-bold text-xs flex items-center justify-center gap-1.5">
+                      <Lock className="w-3.5 h-3.5" />
+                      Selesaikan Proyek #{project.order - 1} terlebih dahulu
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  // ==================== MAKECODE ARCADE IDE STUDIO ====================
+  return (
+    <div className="rounded-xl overflow-hidden border-2 border-[#164247] shadow-2xl bg-white flex flex-col min-h-[760px]">
+      {/* 1. AUTHENTIC MAKECODE TEAL TOP BAR */}
+      <header className="bg-[#276C73] text-white px-3 h-12 flex items-center justify-between gap-2 shrink-0 select-none">
+        {/* Left: Brand & Project Selector */}
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div className="flex items-center gap-2 shrink-0">
+            <div className="w-6 h-6 grid grid-cols-2 gap-0.5 p-0.5 bg-white/15 rounded">
+              <span className="bg-[#FFE600] rounded-[1px]" />
+              <span className="bg-[#78dc52] rounded-[1px]" />
+              <span className="bg-[#87f2ff] rounded-[1px]" />
+              <span className="bg-[#ff93c4] rounded-[1px]" />
+            </div>
+            <span className="font-black text-sm tracking-tight hidden sm:inline">CodeSpark</span>
+            <span className="text-white/40 hidden sm:inline">|</span>
+            <span className="font-extrabold text-sm text-teal-50 truncate">
+              Game Maker Arcade
+            </span>
+          </div>
+
+          <span className="hidden xl:inline-flex items-center px-2 py-0.5 rounded bg-black/20 text-[11px] font-bold text-[#FFE600]">
+            #{selectedProject.order} {selectedProject.shortTitle}
+          </span>
+        </div>
+
+        {/* Center: Blocks | Python | Assets Segmented Switcher */}
+        <div className="flex items-center h-full pt-1.5">
+          <button
+            type="button"
+            onClick={() => {
+              if (activeTab === 'python' && pythonDirty) {
+                handleRunPython();
+              }
+              setActiveTab('blocks');
+            }}
+            className={`h-full px-3.5 sm:px-5 rounded-t-md text-xs font-extrabold flex items-center gap-1.5 cursor-pointer transition-colors ${
+              activeTab === 'blocks'
+                ? 'bg-white text-[#276C73] shadow-sm'
+                : 'bg-[#1D565C] text-teal-100 hover:bg-[#194b50]'
+            }`}
+          >
+            <Puzzle className="w-3.5 h-3.5" />
+            Blocks
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('python')}
+            className={`h-full px-3.5 sm:px-5 rounded-t-md text-xs font-extrabold flex items-center gap-1.5 cursor-pointer transition-colors border-l border-[#276C73] ${
+              activeTab === 'python'
+                ? 'bg-white text-[#276C73] shadow-sm'
+                : 'bg-[#1D565C] text-teal-100 hover:bg-[#194b50]'
+            }`}
+          >
+            <Code2 className="w-3.5 h-3.5" />
+            Python
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('assets')}
+            className={`h-full px-3.5 sm:px-5 rounded-t-md text-xs font-extrabold flex items-center gap-1.5 cursor-pointer transition-colors border-l border-[#276C73] ${
+              activeTab === 'assets'
+                ? 'bg-white text-[#276C73] shadow-sm'
+                : 'bg-[#1D565C] text-teal-100 hover:bg-[#194b50]'
+            }`}
+          >
+            <ImageIcon className="w-3.5 h-3.5" />
+            Assets
+          </button>
+        </div>
+
+        {/* Right: Utility Action Icons (Home, Mission Guide, Auto-Fill Solution, Reset) */}
+        <div className="flex items-center gap-1 shrink-0">
+          <button
+            type="button"
+            onClick={() => setSelectedProjectId(null)}
+            className="p-2 rounded hover:bg-white/15 text-white cursor-pointer"
+            title="Kembali ke Daftar 5 Proyek Game Maker"
+          >
+            <Home className="w-4 h-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowMissionGuide((v) => !v)}
+            className={`px-2.5 py-1.5 rounded text-xs font-extrabold flex items-center gap-1.5 cursor-pointer transition-colors ${
+              showMissionGuide
+                ? 'bg-[#FFE600] text-slate-900'
+                : 'bg-white/15 hover:bg-white/25 text-white'
+            }`}
+            title="Checklist Misi Proyek"
+          >
+            <HelpCircle className="w-3.5 h-3.5" />
+            <span className="hidden md:inline">
+              Misi ({passedCount}/{selectedProject.missionChecks.length})
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={handleLoadSolution}
+            className="hidden sm:flex items-center gap-1 px-2.5 py-1.5 rounded bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-extrabold cursor-pointer"
+            title="Pasang blok & kode Python lengkap proyek ini"
+          >
+            <Wand2 className="w-3.5 h-3.5" />
+            <span className="hidden lg:inline">Pasang Solusi</span>
+          </button>
+          <button
+            type="button"
+            onClick={handleResetProject}
+            className="p-2 rounded hover:bg-white/15 text-white cursor-pointer"
+            title="Reset ke Template Awal"
+          >
+            <RefreshCw className="w-4 h-4" />
+          </button>
+        </div>
+      </header>
+
+      {/* Optional Collapsible Mission Guide Strip */}
+      {showMissionGuide && (
+        <div className="bg-[#eef8f9] border-b border-[#bfe0e3] px-4 py-3 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-black text-[#1D565C] uppercase">
+                Misi Proyek #{selectedProject.order}: {selectedProject.title}
+              </span>
+              {allMissionsPassed && (
+                <span className="px-2 py-0.5 rounded-full bg-emerald-600 text-white text-[10px] font-black">
+                  SEMUA MISI TERPENUHI!
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-slate-600">{selectedProject.overview}</p>
+            <div className="flex flex-wrap gap-2 pt-1">
+              {missionResults.map((m) => (
+                <div
+                  key={m.id}
+                  title={m.hint}
+                  className={`px-2.5 py-1 rounded-lg border text-[11px] font-bold flex items-center gap-1.5 ${
+                    m.passed
+                      ? 'bg-emerald-50 border-emerald-300 text-emerald-800'
+                      : 'bg-white border-slate-300 text-slate-700'
+                  }`}
+                >
+                  {m.passed ? (
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                  ) : (
+                    <AlertCircle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                  )}
+                  <span>{m.label}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={handleLoadSolution}
+              className="px-3 py-1.5 rounded-lg bg-[#276C73] hover:bg-[#1D565C] text-white text-xs font-extrabold flex items-center gap-1.5 cursor-pointer"
+            >
+              <Wand2 className="w-3.5 h-3.5" />
+              Bantu Pasang Kode Lengkap
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowMissionGuide(false)}
+              className="p-1.5 rounded-lg hover:bg-slate-200 text-slate-600 cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 2. MAIN 3-PANE MAKECODE ARCADE WORKSPACE */}
+      <div className="flex-1 flex flex-col lg:flex-row min-h-[580px] relative overflow-hidden">
+        {/* LEFT PANE: Teal Handheld Arcade Console Simulator */}
+        <aside className="w-full lg:w-[272px] xl:w-[292px] shrink-0 bg-[#f5f7f8] border-b lg:border-b-0 lg:border-r border-slate-300 p-3 flex flex-col justify-between gap-3">
+          <ArcadeHandheldConsole
+            program={program}
+            customSprites={customSprites}
+            controlsHint={selectedProject.controlsHint}
+            onHudUpdate={setHudSnapshot}
+          />
+
+          {/* Compact Live Mission Progress Card under Handheld */}
+          <div className="bg-white border border-slate-200 rounded-lg p-2.5 space-y-1.5">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-extrabold text-slate-700 flex items-center gap-1">
+                <Trophy className="w-3.5 h-3.5 text-amber-500" />
+                Checklist Misi
+              </span>
+              <span className="text-[11px] font-black text-[#276C73]">
+                {passedCount}/{selectedProject.missionChecks.length}
+              </span>
+            </div>
+            <div className="space-y-1">
+              {missionResults.map((m) => (
+                <div
+                  key={m.id}
+                  title={m.hint}
+                  className={`text-[10.5px] font-semibold flex items-start gap-1.5 leading-snug ${
+                    m.passed ? 'text-emerald-700' : 'text-slate-600'
+                  }`}
+                >
+                  <span
+                    className={`w-3.5 h-3.5 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${
+                      m.passed ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-slate-500'
+                    }`}
+                  >
+                    {m.passed ? <Check className="w-2.5 h-2.5" /> : '·'}
+                  </span>
+                  <span>{m.label}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </aside>
+
+        {/* MIDDLE PANE: MakeCode Category Toolbox + Dark Gray Flyout Drawer (Visible in Blocks Mode) */}
+        {activeTab === 'blocks' && (
+          <div className="flex shrink-0 relative border-b lg:border-b-0 border-slate-300">
+            {/* White Category Rail with Colored Left Stripes */}
+            {!toolboxCollapsed && (
+              <div className="w-40 bg-white border-r border-slate-200 flex flex-col shrink-0">
+                {/* Search input */}
+                <div className="p-2 border-b border-slate-200 relative">
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search..."
+                    className="w-full pl-2.5 pr-7 py-1.5 text-xs font-semibold bg-slate-50 border border-slate-300 rounded focus:outline-none focus:border-[#276C73]"
+                  />
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none" />
+                </div>
+
+                {/* 9 MakeCode Categories */}
+                <div className="flex-1 overflow-y-auto py-1">
+                  {ARCADE_CATEGORIES.map((cat) => {
+                    const Icon = getCategoryIcon(cat.id);
+                    const isSelected = !searchQuery.trim() && selectedCategory === cat.id;
                     return (
                       <button
-                        key={step.id}
+                        key={cat.id}
                         type="button"
-                        onClick={() => handleToggleStep(step.id)}
-                        className={`w-full text-left p-3.5 border-2 border-black transition-all cursor-pointer ${
-                          active
-                            ? 'bg-[#FFFDF7] shadow-[3px_3px_0px_0px_#000]'
-                            : 'bg-neutral-50 opacity-85 hover:opacity-100'
-                        }`}
+                        onClick={() => {
+                          setSearchQuery('');
+                          setSelectedCategory((curr) => (curr === cat.id ? null : cat.id));
+                        }}
+                        className="w-full px-3 py-2.5 text-left text-[13px] font-bold flex items-center gap-2.5 transition-colors cursor-pointer relative"
+                        style={{
+                          borderLeft: `6px solid ${cat.color}`,
+                          backgroundColor: isSelected ? cat.color : 'transparent',
+                          color: isSelected ? '#ffffff' : cat.color,
+                        }}
                       >
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span
-                              className="w-5 h-5 border-2 border-black flex items-center justify-center shrink-0"
-                              style={{ backgroundColor: active ? '#4ADE80' : '#FFFFFF' }}
-                            >
-                              {active && <Check className="w-3.5 h-3.5 stroke-[3]" />}
-                            </span>
-                            <span className="font-display font-extrabold text-sm">
-                              {step.title}
-                            </span>
-                            <span
-                              className="px-1.5 py-0.5 border border-black text-[10px] font-extrabold"
-                              style={{ backgroundColor: step.badgeColor }}
-                            >
-                              {active ? 'AKTIF' : 'KLIK UNTUK PASANG'}
-                            </span>
-                          </div>
-                          <p className="text-xs text-neutral-700 leading-relaxed pl-7">
-                            {step.description}
-                          </p>
-                          <code className="block ml-7 mt-1.5 px-2 py-1 bg-neutral-900 text-[#4ADE80] font-mono text-[11px] overflow-x-auto">
-                            {step.codeSnippet}
-                          </code>
-                        </div>
+                        <Icon className="w-4 h-4 shrink-0" />
+                        <span className="truncate">{cat.label}</span>
                       </button>
                     );
                   })}
                 </div>
               </div>
-            ) : (
-              <div className="space-y-2">
-                <div className="flex items-center justify-between text-xs font-bold">
-                  <span>Editor Kode Game (JavaScript)</span>
-                  <button
-                    type="button"
-                    onClick={handleEnableAllSteps}
-                    className="underline font-extrabold cursor-pointer"
-                  >
-                    Isi Kode Lengkap 4 Modul
-                  </button>
-                </div>
-                <textarea
-                  rows={14}
-                  value={codeText}
-                  onChange={(e) => setCodeText(e.target.value)}
-                  spellCheck={false}
-                  className="w-full p-3.5 bg-[#151821] text-[#38BDF8] border-[3px] border-black font-mono text-xs leading-relaxed resize-y"
-                />
-                <p className="text-[11px] text-neutral-600">
-                  Tip: Setiap pemanggilan <code className="font-mono font-bold">game.addScene(...)</code>,{' '}
-                  <code className="font-mono font-bold">game.addRule(...)</code> &amp;{' '}
-                  <code className="font-mono font-bold">game.addFeature(...)</code> langsung menyalakan mekanik di mesin game kanan!
-                </p>
-              </div>
             )}
 
-            {validationError && (
-              <div className="p-3 bg-[#FB7185]/30 border-2 border-black text-xs font-bold flex items-start gap-2">
-                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-                <span>{validationError}</span>
-              </div>
-            )}
-
-            <div className="pt-2 flex flex-wrap items-center justify-between gap-3 border-t-2 border-black/15">
-              <div className="text-xs font-bold text-neutral-700">
-                Mainkan &amp; uji game di layar kanan, lalu klik tombol untuk membuka game berikutnya!
-              </div>
-              <button
-                type="button"
-                disabled={saving}
-                onClick={() => void handleRunAndComplete()}
-                className="neo-btn bg-[#4ADE80] px-5 py-3 text-sm font-extrabold inline-flex items-center gap-2 cursor-pointer"
-              >
-                <Play className="w-4 h-4 fill-black" />
-                {saving
-                  ? 'Menyimpan...'
-                  : isCompleted
-                    ? 'Simpan Ulang & Uji Game'
-                    : 'Jalankan & Selesaikan Game'}
-              </button>
-            </div>
-          </div>
-
-          {/* RIGHT: Live Playable Game Console */}
-          <div className="lg:col-span-5 lg:sticky lg:top-20 space-y-3">
-            <div className="bg-[#181C24] border-[3px] border-black shadow-[6px_6px_0px_0px_#000] p-3 sm:p-4">
-              <div className="flex items-center justify-between mb-3 px-1 text-white">
-                <div className="flex items-center gap-1.5">
-                  <Gamepad2 className="w-4 h-4 text-[#38BDF8]" />
-                  <span className="font-mono text-[11px] font-bold text-neutral-200">
-                    PLAYABLE GAME CONSOLE
-                  </span>
-                </div>
-                <span className="font-mono text-[10px] font-extrabold bg-[#38BDF8] text-black px-1.5 py-0.5">
-                  {activeStepsCount}/4 ON
-                </span>
-              </div>
-
-              <div className="bg-[#FFFDF7] border-[3px] border-black p-4 min-h-[420px]">
-                {activeProject.id === 'game_image_match' && (
-                  <ImageMatchLiveGame
-                    gameTitle={gameTitle || activeProject.defaultGameName}
-                    enabledSteps={effectiveEnabledSteps}
-                  />
-                )}
-                {activeProject.id === 'game_memory_card' && (
-                  <MemoryCardLiveGame
-                    gameTitle={gameTitle || activeProject.defaultGameName}
-                    enabledSteps={effectiveEnabledSteps}
-                  />
-                )}
-                {activeProject.id === 'game_color_puzzle' && (
-                  <ColorPuzzleLiveGame
-                    gameTitle={gameTitle || activeProject.defaultGameName}
-                    enabledSteps={effectiveEnabledSteps}
-                  />
-                )}
-                {activeProject.id === 'game_save_polar_bear' && (
-                  <SavePolarBearLiveGame
-                    gameTitle={gameTitle || activeProject.defaultGameName}
-                    enabledSteps={effectiveEnabledSteps}
-                  />
-                )}
-                {activeProject.id === 'game_space_mission' && (
-                  <SpaceMissionLiveGame
-                    gameTitle={gameTitle || activeProject.defaultGameName}
-                    enabledSteps={effectiveEnabledSteps}
-                  />
-                )}
-              </div>
-            </div>
-
-            <div className="neo-card bg-[#FFFDF7] p-4 space-y-2">
-              <div className="font-display font-extrabold text-xs uppercase tracking-wide">
-                Target Pembelajaran Game Ini:
-              </div>
-              <ul className="space-y-1.5 text-xs text-neutral-800">
-                {activeProject.learningGoals.map((goal, idx) => (
-                  <li key={idx} className="flex items-start gap-2">
-                    <CheckCircle2 className="w-3.5 h-3.5 shrink-0 mt-0.5 text-emerald-700" />
-                    <span>{goal}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </div>
-        </div>
-      </main>
-    );
-  }
-
-  // ==================== ROADMAP VIEW (5 SEQUENTIAL GAMES) ====================
-  const progressPct = Math.round((completedCount / GAME_MAKER_PROJECTS.length) * 100);
-
-  return (
-    <main className="max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 space-y-6 text-black">
-      {/* Header Banner */}
-      <div className="neo-card bg-white p-5 sm:p-6 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-        <div className="space-y-1.5">
-          <div className="inline-flex items-center gap-1.5 bg-[#38BDF8] border-2 border-black px-2.5 py-0.5 text-xs font-extrabold">
-            <Gamepad2 className="w-3.5 h-3.5" />
-            {isAdminPreview
-              ? 'Pratinjau Admin · Seluruh 5 Game Terbuka'
-              : 'Program Panduan Game Maker · Akses Aktif'}
-          </div>
-          <h1 className="font-display text-2xl sm:text-3xl font-extrabold">
-            Game Maker — 5 Proyek Game Interaktif
-          </h1>
-          <p className="text-xs sm:text-sm text-neutral-700 max-w-2xl leading-relaxed">
-            {isAdminPreview
-              ? 'Uji langsung seluruh 5 proyek game tanpa terkunci. Di sisi siswa, game dibuka secara bertahap dari Game 01 hingga Game 05.'
-              : 'Setiap game dibuka secara bertahap! Selesaikan game sebelumnya untuk membuka tantangan game berikutnya dan raih Sertifikat Game Maker.'}
-          </p>
-        </div>
-
-        <div className="w-full lg:w-72 space-y-2 shrink-0">
-          <div className="flex items-center justify-between text-xs font-extrabold tabular-nums">
-            <span>Progres Game Maker</span>
-            <span>
-              {completedCount}/{GAME_MAKER_PROJECTS.length} Game ({progressPct}%)
-            </span>
-          </div>
-          <div className="h-3.5 bg-[#FFFDF7] border-2 border-black">
-            <div className="h-full bg-[#38BDF8]" style={{ width: `${progressPct}%` }} />
-          </div>
-          <div className="flex items-center justify-between text-xs font-bold text-neutral-600 tabular-nums">
-            <span className="inline-flex items-center gap-1">
-              <Star className="w-3.5 h-3.5 fill-[#FFE600] text-black" />
-              {totalStars}/{GAME_MAKER_PROJECTS.length * 3} Bintang
-            </span>
-            {completedCount === GAME_MAKER_PROJECTS.length && onOpenCertificates && (
-              <button
-                type="button"
-                onClick={onOpenCertificates}
-                className="underline font-extrabold text-black cursor-pointer"
-              >
-                Lihat Sertifikat
-              </button>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* 5 Sequential Game Cards */}
-      <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-6">
-        {GAME_MAKER_PROJECTS.map((proj) => {
-          const Icon = getGameIcon(proj.id);
-          const prog = completedProgressMap.get(proj.id);
-          const completed = Boolean(prog);
-          const unlocked = isProjectUnlocked(proj);
-          const prevProj = GAME_MAKER_PROJECTS.find((p) => p.order === proj.order - 1);
-
-          return (
-            <div
-              key={proj.id}
-              className={`neo-card p-5 flex flex-col justify-between gap-4 ${
-                unlocked ? 'bg-white' : 'bg-neutral-100 opacity-80'
-              }`}
+            {/* Collapse Toggle Pill (like MakeCode Arcade's gray side handle) */}
+            <button
+              type="button"
+              onClick={() => setToolboxCollapsed((c) => !c)}
+              className="w-4 bg-slate-200 hover:bg-slate-300 text-slate-600 flex items-center justify-center border-r border-slate-300 cursor-pointer shrink-0"
+              title={toolboxCollapsed ? 'Tampilkan Toolbox' : 'Sembunyikan Toolbox'}
             >
-              <div className="space-y-3">
-                <div className="flex items-center justify-between gap-2">
-                  <span
-                    className="px-2.5 py-1 border-2 border-black font-mono text-xs font-extrabold"
-                    style={{ backgroundColor: unlocked ? proj.accentColor : '#E5E5E5' }}
-                  >
-                    Game 0{proj.order}
-                  </span>
-                  <div className="flex items-center gap-0.5">
-                    {[1, 2, 3].map((s) => (
-                      <Star
-                        key={s}
-                        className={`w-4 h-4 ${
-                          prog && s <= prog.stars
-                            ? 'fill-[#FFE600] text-black'
-                            : 'text-neutral-300'
-                        }`}
-                      />
-                    ))}
-                  </div>
-                </div>
+              {toolboxCollapsed ? (
+                <ChevronRight className="w-3.5 h-3.5" />
+              ) : (
+                <ChevronLeft className="w-3.5 h-3.5" />
+              )}
+            </button>
 
-                <div className="flex items-start gap-3">
-                  <div
-                    className="w-11 h-11 border-2 border-black shadow-[2px_2px_0px_0px_#000] flex items-center justify-center shrink-0"
-                    style={{ backgroundColor: unlocked ? proj.accentColor : '#E5E5E5' }}
-                  >
-                    <Icon className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h2 className="font-display text-xl font-extrabold leading-tight">
-                      {proj.title}
-                    </h2>
-                    <p className="text-[11px] font-bold text-neutral-600 mt-0.5">{proj.concept}</p>
-                  </div>
-                </div>
-
-                <p className="text-xs text-neutral-700 leading-relaxed">{proj.subtitle}</p>
-
-                <div className="flex flex-wrap gap-1">
-                  {proj.steps.map((st) => (
+            {/* Dark Gray MakeCode Flyout Drawer (#63696E) */}
+            {!toolboxCollapsed && (selectedCategory || searchQuery.trim()) && (
+              <div className="w-64 xl:w-72 bg-[#63696E] text-white flex flex-col border-r border-slate-700 shadow-inner max-h-[580px] lg:max-h-none overflow-y-auto shrink-0">
+                <div className="px-3.5 py-2.5 border-b border-white/15 flex items-center justify-between sticky top-0 bg-[#63696E] z-10">
+                  <div className="flex items-center gap-2">
                     <span
-                      key={st.id}
-                      className="text-[10px] font-bold px-2 py-0.5 bg-[#FFFDF7] border border-black/30"
-                    >
-                      {st.title.replace(/^\d+\.\s*/, '')}
+                      className="w-3 h-3 rounded-full inline-block"
+                      style={{
+                        backgroundColor: selectedCategory
+                          ? getCategoryColor(selectedCategory)
+                          : '#FFE600',
+                      }}
+                    />
+                    <span className="font-extrabold text-sm capitalize">
+                      {searchQuery.trim()
+                        ? `Hasil: "${searchQuery}"`
+                        : ARCADE_CATEGORIES.find((c) => c.id === selectedCategory)?.label}
                     </span>
-                  ))}
-                </div>
-              </div>
-
-              <div className="pt-3 border-t-2 border-black/10 flex items-center justify-between gap-2">
-                <span className="text-xs font-bold inline-flex items-center gap-1">
-                  {completed ? (
-                    <>
-                      <CheckCircle2 className="w-4 h-4 text-emerald-700" />
-                      Selesai
-                    </>
-                  ) : unlocked ? (
-                    <>
-                      <Unlock className="w-3.5 h-3.5 text-emerald-700" />
-                      Siap Dibangun
-                    </>
-                  ) : (
-                    <>
-                      <Lock className="w-3.5 h-3.5" />
-                      Terkunci
-                    </>
-                  )}
-                </span>
-
-                {unlocked ? (
+                  </div>
                   <button
                     type="button"
                     onClick={() => {
-                      soundEngine.playButtonClick();
-                      setActiveProjectId(proj.id);
+                      setSelectedCategory(null);
+                      setSearchQuery('');
                     }}
-                    className={`neo-btn px-3.5 py-2 text-xs font-extrabold inline-flex items-center gap-1.5 cursor-pointer ${
-                      completed ? 'bg-[#FFE600]' : 'bg-[#4ADE80]'
-                    }`}
+                    className="p-1 rounded hover:bg-white/15 text-white/80 cursor-pointer"
+                    title="Tutup laci blok"
                   >
-                    <Play className="w-3.5 h-3.5 fill-black" />
-                    {completed ? 'Main & Edit' : 'Buat Game'}
+                    <X className="w-3.5 h-3.5" />
                   </button>
-                ) : (
-                  <span className="px-2.5 py-1.5 bg-neutral-200 border border-black/40 text-[11px] font-extrabold text-neutral-600">
-                    Selesaikan {prevProj?.shortTitle} dulu
-                  </span>
-                )}
+                </div>
+
+                <div className="p-3 space-y-2.5">
+                  <p className="text-[10.5px] text-slate-200/90 leading-snug">
+                    Klik atau seret blok ke kanvas kanan (blok pernyataan masuk ke event bertanda{' '}
+                    <b>Target</b>).
+                  </p>
+
+                  {visibleFlyoutTemplates.length === 0 ? (
+                    <div className="text-xs text-slate-300 py-4 text-center">
+                      Tidak ada blok yang cocok.
+                    </div>
+                  ) : (
+                    visibleFlyoutTemplates.map((tpl) => {
+                      const bg =
+                        tpl.kind === 'event' && tpl.eventTemplate
+                          ? getEventColor(tpl.eventTemplate.eventType)
+                          : getCategoryColor(tpl.category);
+
+                      return (
+                        <div
+                          key={tpl.id}
+                          draggable
+                          onDragStart={(e) => {
+                            e.dataTransfer.setData('text/arcade-template', tpl.id);
+                          }}
+                          onClick={() => handleInsertTemplate(tpl)}
+                          className="group cursor-pointer transition-transform hover:scale-[1.02] active:scale-[0.98]"
+                          title={tpl.description}
+                        >
+                          {tpl.kind === 'event' ? (
+                            <div className="rounded-lg overflow-hidden shadow-md">
+                              <div
+                                className="px-3 py-2 text-[11.5px] font-extrabold text-white flex items-center justify-between gap-1"
+                                style={{ backgroundColor: bg }}
+                              >
+                                <span>{tpl.label}</span>
+                                <Plus className="w-3.5 h-3.5 shrink-0 opacity-80" />
+                              </div>
+                              <div
+                                className="h-3 border-l-[10px] bg-black/20"
+                                style={{ borderLeftColor: bg }}
+                              />
+                              <div className="h-2.5" style={{ backgroundColor: bg }} />
+                            </div>
+                          ) : (
+                            <div
+                              className="px-3 py-2 rounded-lg text-[11.5px] font-extrabold text-white shadow-md border-b-2 border-black/25 flex items-center justify-between gap-2"
+                              style={{ backgroundColor: bg }}
+                            >
+                              <span className="leading-snug">{tpl.label}</span>
+                              <Plus className="w-3.5 h-3.5 shrink-0 opacity-80" />
+                            </div>
+                          )}
+                          <div className="text-[10px] text-slate-200/80 mt-1 px-0.5">
+                            {tpl.description}
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* RIGHT PANE: Blocks Dotted Canvas / Python Code Editor / Pixel Art Assets Editor */}
+        <main className="flex-1 flex flex-col min-w-0 bg-[#f8fafc] overflow-hidden">
+          {activeTab === 'blocks' && (
+            <ArcadeBlocksCanvas
+              program={program}
+              customSprites={customSprites}
+              activeContainerId={activeContainerId}
+              zoom={zoom}
+              onSelectContainer={setActiveContainerId}
+              onUpdateContainerParam={handleUpdateContainerParam}
+              onRemoveContainer={handleRemoveContainer}
+              onUpdateBlockParam={handleUpdateBlockParam}
+              onMoveBlock={handleMoveBlock}
+              onRemoveBlock={handleRemoveBlock}
+              onDropTemplateIntoContainer={handleDropTemplateIntoContainer}
+            />
+          )}
+
+          {activeTab === 'python' && (
+            <div className="flex-1 flex flex-col bg-[#1e1e2e] text-slate-100 overflow-hidden">
+              {/* Python Editor Toolbar */}
+              <div className="px-4 py-2.5 bg-[#151522] border-b border-slate-700 flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <Code2 className="w-4 h-4 text-[#FFE600]" />
+                  <span className="text-xs font-extrabold text-white">main.py — MakeCode Arcade Python</span>
+                  {pythonDirty && (
+                    <span className="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 text-[10px] font-bold">
+                      Belum dijalankan
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleRunPython}
+                    className="px-3.5 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-extrabold flex items-center gap-1.5 cursor-pointer shadow-sm"
+                  >
+                    <Play className="w-3.5 h-3.5 fill-current" />
+                    Jalankan Python & Sinkronkan
+                  </button>
+                </div>
+              </div>
+
+              {/* Quick Insert Python Snippets */}
+              <div className="px-4 py-2 bg-[#181826] border-b border-slate-800 flex flex-wrap items-center gap-1.5">
+                <span className="text-[10px] font-bold uppercase text-slate-400 mr-1">
+                  Sisipkan Cepat:
+                </span>
+                {PYTHON_SNIPPETS.map((sn) => (
+                  <button
+                    key={sn.label}
+                    type="button"
+                    onClick={() => {
+                      setPythonDraft((prev) => prev.trimEnd() + '\n' + sn.code);
+                      setPythonDirty(true);
+                    }}
+                    className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-[#87f2ff] text-[11px] font-bold cursor-pointer border border-slate-700"
+                  >
+                    {sn.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Error Diagnostics Banner */}
+              {pythonErrors.length > 0 && (
+                <div className="px-4 py-2 bg-rose-950/90 border-b border-rose-700 text-rose-200 text-xs space-y-1">
+                  {pythonErrors.map((err, idx) => (
+                    <div key={idx} className="flex items-center gap-2 font-mono">
+                      <AlertCircle className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                      <span>
+                        Baris {err.line}: {err.message}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Code Textarea with Line Numbers */}
+              <div className="flex-1 flex overflow-auto font-mono text-[13px] leading-6">
+                <div className="py-3 px-3 bg-[#151522] text-slate-500 text-right select-none border-r border-slate-800 shrink-0">
+                  {pythonDraft.split('\n').map((_, idx) => (
+                    <div key={idx}>{idx + 1}</div>
+                  ))}
+                </div>
+                <textarea
+                  value={pythonDraft}
+                  onChange={(e) => {
+                    setPythonDraft(e.target.value);
+                    setPythonDirty(true);
+                  }}
+                  spellCheck={false}
+                  className="flex-1 w-full h-full min-h-[420px] p-3 bg-transparent text-[#e2e8f0] focus:outline-none resize-none font-mono text-[13px] leading-6"
+                />
               </div>
             </div>
-          );
-        })}
+          )}
+
+          {activeTab === 'assets' && (
+            <ArcadePixelEditor
+              customSprites={customSprites}
+              selectedSpriteId={selectedAssetSpriteId}
+              onSelectSprite={setSelectedAssetSpriteId}
+              onUpdateSprite={(id, grid) => {
+                setCustomSprites((prev) => ({ ...prev, [id]: grid }));
+              }}
+              onResetSprite={(id) => {
+                setCustomSprites((prev) => {
+                  const copy = { ...prev };
+                  delete copy[id];
+                  return copy;
+                });
+                showToast('Sprite dikembalikan ke desain default.');
+              }}
+            />
+          )}
+        </main>
       </div>
-    </main>
+
+      {/* 3. AUTHENTIC MAKECODE PURPLE BOTTOM ACTION BAR */}
+      <footer className="bg-[#f1f5f9] border-t border-slate-300 px-3 py-2 flex flex-wrap items-center justify-between gap-2 shrink-0">
+        {/* Left: Purple Download & Submit Buttons + Editable Project Title */}
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center rounded-md overflow-hidden shadow-sm">
+            <button
+              type="button"
+              onClick={handleSubmitProject}
+              disabled={submitting}
+              className="px-4 h-10 bg-[#5B4DB7] hover:bg-[#4c3fa3] text-white font-extrabold text-xs sm:text-sm flex items-center gap-2 cursor-pointer disabled:opacity-60 transition-colors"
+            >
+              <Award className="w-4 h-4 text-[#FFE600]" />
+              {submitting ? 'Menyimpan...' : 'Selesai & Simpan Proyek'}
+            </button>
+            <button
+              type="button"
+              onClick={handleDownloadPython}
+              className="px-3 h-10 bg-[#483b99] hover:bg-[#3c3182] text-white border-l border-white/20 flex items-center gap-1 text-xs font-bold cursor-pointer"
+              title="Download Kode Python (.py)"
+            >
+              <Download className="w-4 h-4" />
+              <span className="hidden sm:inline">.py</span>
+            </button>
+          </div>
+
+          {/* Editable Game Title Box (like MakeCode's "tes" box + save icon) */}
+          <div className="flex items-center rounded-md overflow-hidden border border-slate-300 bg-white shadow-sm">
+            <input
+              type="text"
+              value={gameTitle}
+              onChange={(e) => setGameTitle(e.target.value)}
+              placeholder="Nama game..."
+              className="px-3 h-9 text-xs font-bold text-slate-800 w-36 sm:w-48 focus:outline-none"
+            />
+            <button
+              type="button"
+              onClick={() => {
+                if (activeTab === 'python' && pythonDirty) handleRunPython();
+                else showToast(`Judul proyek "${gameTitle}" disimpan.`);
+              }}
+              className="w-9 h-9 bg-[#5B4DB7] hover:bg-[#4c3fa3] text-white flex items-center justify-center cursor-pointer"
+              title="Simpan Perubahan"
+            >
+              <Save className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        {/* Right: Undo/Redo & Zoom -/+ Buttons (MakeCode Arcade style) */}
+        <div className="flex items-center gap-2">
+          {toastMessage && (
+            <span className="hidden md:inline-block px-3 py-1 rounded-full bg-slate-900 text-[#FFE600] text-[11px] font-bold">
+              {toastMessage}
+            </span>
+          )}
+
+          <div className="flex items-center rounded-md overflow-hidden shadow-sm">
+            <button
+              type="button"
+              onClick={handleUndo}
+              disabled={history.length === 0}
+              className="w-9 h-9 bg-[#7467c7] hover:bg-[#5B4DB7] disabled:opacity-45 text-white flex items-center justify-center cursor-pointer"
+              title="Undo"
+            >
+              <Undo2 className="w-4 h-4" />
+            </button>
+            <button
+              type="button"
+              onClick={handleRedo}
+              disabled={future.length === 0}
+              className="w-9 h-9 bg-[#7467c7] hover:bg-[#5B4DB7] disabled:opacity-45 text-white border-l border-white/20 flex items-center justify-center cursor-pointer"
+              title="Redo"
+            >
+              <Redo2 className="w-4 h-4" />
+            </button>
+          </div>
+
+          <div className="flex items-center rounded-md overflow-hidden shadow-sm">
+            <button
+              type="button"
+              onClick={() => setZoom((z) => Math.max(0.75, Number((z - 0.1).toFixed(2))))}
+              className="w-9 h-9 bg-[#5B4DB7] hover:bg-[#4c3fa3] text-white flex items-center justify-center cursor-pointer"
+              title="Perkecil Kanvas"
+            >
+              <Minus className="w-4 h-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setZoom((z) => Math.min(1.25, Number((z + 0.1).toFixed(2))))}
+              className="w-9 h-9 bg-[#5B4DB7] hover:bg-[#4c3fa3] text-white border-l border-white/20 flex items-center justify-center cursor-pointer"
+              title="Perbesar Kanvas"
+            >
+              <Plus className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      </footer>
+
+      {/* Victory & Certificate Modal */}
+      {victoryModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/75 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white border-[3px] border-[#0f172a] rounded-3xl max-w-md w-full p-6 shadow-[8px_8px_0px_#0f172a] text-center space-y-4">
+            <div className="w-16 h-16 mx-auto rounded-2xl bg-[#FFE600] border-2 border-[#0f172a] flex items-center justify-center shadow-[3px_3px_0px_#0f172a]">
+              <Trophy className="w-8 h-8 text-slate-900" />
+            </div>
+            <div>
+              <div className="inline-flex items-center gap-1 text-amber-500 mb-1">
+                <Star className="w-5 h-5 fill-current" />
+                <Star className="w-5 h-5 fill-current" />
+                <Star className="w-5 h-5 fill-current" />
+              </div>
+              <h3 className="text-xl font-black text-slate-900">
+                Proyek {victoryModal.project.title} Selesai!
+              </h3>
+              <p className="text-xs text-slate-600 mt-1">
+                Progres kode Arcade kamu sudah tersimpan secara realtime!
+              </p>
+            </div>
+
+            {victoryModal.newCertificate && (
+              <div className="bg-emerald-50 border-2 border-emerald-400 rounded-2xl p-3 text-left flex items-center gap-3">
+                <Award className="w-8 h-8 text-emerald-600 shrink-0" />
+                <div>
+                  <div className="text-xs font-black text-emerald-900">
+                    Sertifikat Baru Terbit!
+                  </div>
+                  <div className="text-[11px] text-emerald-700 font-semibold">
+                    {victoryModal.newCertificate.tierName} · #{victoryModal.newCertificate.certificateNo}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
+              {victoryModal.newCertificate && onOpenCertificates && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setVictoryModal(null);
+                    onOpenCertificates();
+                  }}
+                  className="px-4 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-extrabold text-xs border-2 border-[#0f172a] cursor-pointer flex items-center gap-1.5"
+                >
+                  <Award className="w-4 h-4" />
+                  Lihat Sertifikat
+                </button>
+              )}
+              {(() => {
+                const nextProj = GAME_MAKER_PROJECTS.find(
+                  (p) => p.order === victoryModal.project.order + 1
+                );
+                if (!nextProj) return null;
+                return (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setVictoryModal(null);
+                      openProject(nextProj);
+                    }}
+                    className="px-4 py-2.5 rounded-xl bg-[#276C73] hover:bg-[#1D565C] text-white font-extrabold text-xs border-2 border-[#0f172a] cursor-pointer flex items-center gap-1.5"
+                  >
+                    <Layers className="w-4 h-4" />
+                    Lanjut Proyek #{nextProj.order}
+                  </button>
+                );
+              })()}
+              <button
+                type="button"
+                onClick={() => setVictoryModal(null)}
+                className="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-extrabold text-xs border-2 border-[#0f172a] cursor-pointer"
+              >
+                Tutup
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
   );
 };

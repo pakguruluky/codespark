@@ -640,6 +640,7 @@ export const StudentDashboard: React.FC<Props> = ({
         {activeTab === 'media' && (
           <LearningMediaHub
             initialUnit={mediaInitialUnit}
+            studentName={studentRecord.name}
             onLaunchUnit={handleLaunchFromMedia}
             onOpenPrintableModule={(tier) => setModuleModalTier(tier)}
           />
